@@ -4,7 +4,7 @@
  */
 
 // ============================================================================
-// 1. Constants & Default Settings
+// 1. Constants & Storage Keys
 // ============================================================================
 
 const DEFAULT_PERSONA = 
@@ -43,7 +43,7 @@ const state = {
   webllmEngine: null,
   isModelLoading: false,
   isModelReady: false,
-  isGenerating: false,
+  isGenerating: false, // Prevents duplicate triggers and disposed WebGPU errors
   
   // Knowledge Base Cache
   knowledgeBase: []
@@ -64,7 +64,11 @@ function loadPersistedState() {
 
   state.activeChatId = localStorage.getItem(STORAGE_KEYS.ACTIVE_ID) || null;
   state.geminiApiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
-  state.systemPersona = localStorage.getItem(STORAGE_KEYS.PERSONA) || DEFAULT_PERSONA;
+  
+  // Only use default persona on brand new installs; otherwise preserve user preference
+  const savedPersona = localStorage.getItem(STORAGE_KEYS.PERSONA);
+  state.systemPersona = (savedPersona !== null) ? savedPersona : DEFAULT_PERSONA;
+
   state.theme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
   state.currentMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'online';
   state.onlineModel = localStorage.getItem(STORAGE_KEYS.ONLINE_MODEL) || 'gemini-3.8-flash';
@@ -182,11 +186,12 @@ async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4078
+      maxOutputTokens: 4078 // Configured limit for comprehensive answers
     }
   };
 
-  if (systemPrompt && systemPrompt.trim()) {
+  // Only attach system instruction if user provided one
+  if (systemPrompt && systemPrompt.trim().length > 0) {
     payload.system_instruction = {
       parts: [{ text: systemPrompt.trim() }]
     };
@@ -238,7 +243,7 @@ async function loadOfflineModel(onProgress) {
   }
 
   if (!('gpu' in navigator)) {
-    throw new Error('WebGPU is not enabled in this browser. On iPadOS Safari, open Settings > Safari > Advanced > Feature Flags > WebGPU.');
+    throw new Error('WebGPU is not enabled. In iPad Settings > Safari > Advanced > Feature Flags, enable WebGPU.');
   }
 
   state.isModelLoading = true;
@@ -290,11 +295,11 @@ async function callWebLLMOffline(messages, systemPrompt) {
   }
 
   const formatted = [];
-  if (systemPrompt && systemPrompt.trim()) {
+  if (systemPrompt && systemPrompt.trim().length > 0) {
     formatted.push({ role: 'system', content: systemPrompt.trim() });
   }
 
-  // Keep last 4 turns to avoid exceeding iPad WebGPU buffers
+  // Preserve the last 4 turns to avoid exceeding iPad WebGPU buffers
   const recentTurns = messages.slice(-4);
   for (const m of recentTurns) {
     formatted.push({
@@ -306,8 +311,8 @@ async function callWebLLMOffline(messages, systemPrompt) {
   const completion = await state.webllmEngine.chat.completions.create({
     messages: formatted,
     temperature: 0.6,
-    max_tokens: 2048,
-    stream: false // Disables streaming to avoid disposed tensor context bug
+    max_tokens: 2048, // Configured token limit for complete explanations
+    stream: false     // Prevents premature tensor disposal in Safari
   });
 
   return completion.choices?.[0]?.message?.content || 'No response generated.';
@@ -539,6 +544,7 @@ async function handleSendMessage() {
   const sendBtn = document.getElementById('btn-send');
   const text = inputEl.value.trim();
 
+  // Guard against blank input or concurrent generation
   if (!text || state.isGenerating) return;
 
   const chat = getActiveChat();
@@ -674,6 +680,7 @@ function openModal(isOpen) {
 
   if (isOpen) {
     document.getElementById('input-api-key').value = state.geminiApiKey;
+    // Show empty string if persona was cleared, otherwise show the persona
     document.getElementById('input-persona').value = state.systemPersona;
     modal.classList.add('active');
   } else {
@@ -822,7 +829,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (btnSaveSettings) {
     btnSaveSettings.onclick = () => {
       state.geminiApiKey = document.getElementById('input-api-key').value.trim();
-      state.systemPersona = document.getElementById('input-persona').value.trim() || DEFAULT_PERSONA;
+      // Saves whatever is in the box; leaving it empty keeps custom instructions off
+      state.systemPersona = document.getElementById('input-persona').value.trim();
       saveSettings();
       openModal(false);
     };
