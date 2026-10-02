@@ -1,9 +1,12 @@
-const CACHE_NAME = 'study-buddy-cache-v2';
+const CACHE_NAME = 'study-buddy-cache-v3';
 
-// Local files to cache immediately
+// Pre-cache all local assets so offline mode works with Airplane Mode enabled
 const PRECACHE_ASSETS = [
   './',
   './index.html',
+  './style.css',
+  './app.js',
+  './study-data.json',
   './manifest.json'
 ];
 
