@@ -22,19 +22,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
+
+  <!-- Preload WebLLM Engine for True Offline Functionality -->
+  <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js"></script>
 </head>
 <body>
 
-  <!-- Full App Shell -->
   <div id="app-container">
-
-    <!-- Mobile/iPad Portrait Backdrop -->
     <div id="sidebar-backdrop"></div>
 
-    <!-- 1. Collapsible Sidebar (ChatGPT / Gemini matching) -->
+    <!-- 1. Sidebar -->
     <aside id="sidebar">
-      
-      <!-- Brand Header -->
       <div class="sidebar-header">
         <div class="brand-badge">
           <div class="brand-icon">🎓</div>
@@ -46,7 +44,6 @@
         <button id="btn-sidebar-close" class="btn-icon-close" aria-label="Close sidebar">✕</button>
       </div>
 
-      <!-- + New Chat Button -->
       <div class="new-chat-container">
         <button id="btn-new-chat" class="btn-new-chat">
           <span>+ New Chat</span>
@@ -54,15 +51,11 @@
         </button>
       </div>
 
-      <!-- Saved Conversations List (localStorage) -->
       <div class="chat-list-container">
         <div class="section-label">Conversations</div>
-        <div id="chat-list">
-          <!-- Dynamic chat sessions injected by app.js -->
-        </div>
+        <div id="chat-list"></div>
       </div>
 
-      <!-- Sidebar Footer -->
       <div class="sidebar-footer">
         <div class="footer-row">
           <div class="mode-indicator" id="footer-mode-label">
@@ -70,7 +63,7 @@
             <span>Online Gemini</span>
           </div>
           <button id="btn-theme-toggle" class="btn-theme-toggle" title="Toggle Light/Dark Theme">
-            ☀️ Light
+            ☀️️ Light
           </button>
         </div>
 
@@ -84,31 +77,30 @@
           <span style="font-size:0.68rem; color:var(--text-muted);">API</span>
         </button>
       </div>
-
     </aside>
 
-    <!-- 2. Main Chat View -->
+    <!-- 2. Main Chat Window -->
     <main id="main-chat">
-
-      <!-- Top Navigation Bar -->
       <header class="top-bar">
         <div class="top-bar-left">
-          <button id="btn-menu-toggle" class="btn-menu-toggle" aria-label="Toggle sidebar">
-            ☰
-          </button>
-          <div class="chat-header-title" id="chat-header-title">
-            Welcome Study Session
-          </div>
+          <button id="btn-menu-toggle" class="btn-menu-toggle" aria-label="Toggle sidebar">☰</button>
+          <div class="chat-header-title" id="chat-header-title">Welcome Study Session</div>
         </div>
 
         <div class="top-bar-right">
-          <!-- Dual Mode Selector Dropdown -->
+          <!-- Primary Engine Mode Selector -->
           <select id="mode-select" class="mode-select-pill" aria-label="Select AI Mode">
-            <option value="online">Online Mode (Gemini API)</option>
+            <option value="online">Online Mode</option>
             <option value="offline">Offline Mode (WebLLM)</option>
           </select>
 
-          <!-- Quick Actions -->
+          <!-- Online Model Selector -->
+          <select id="online-model-select" class="mode-select-pill" aria-label="Select Online Model">
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Latest)</option>
+            <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+          </select>
+
           <button id="btn-top-export" class="btn-top-action" title="Export study notes to Files">
             <span>📥</span>
             <span style="font-size: 0.72rem;">Notes</span>
@@ -120,12 +112,12 @@
         </div>
       </header>
 
-      <!-- Offline Mode Status / Memory Lag Prevention Bar -->
+      <!-- Offline Status Bar -->
       <div id="offline-status-bar">
         <div class="status-bar-content">
           <div class="status-left">
             <span id="ram-badge" class="ram-badge">0 MB in RAM</span>
-            <span id="status-msg">Zero background RAM used. Tap to initialize Qwen2.5-1.5B.</span>
+            <span id="status-msg">Zero background RAM used. Tap to initialize model.</span>
           </div>
           <div style="display:flex; gap:0.4rem; align-items:center;">
             <button id="btn-load-model" class="btn-load-model">Load Offline Model</button>
@@ -137,12 +129,10 @@
         </div>
       </div>
 
-      <!-- Messages Scroll Area -->
-      <div id="messages-scroll-area">
-        <!-- Chat bubbles rendered dynamically by app.js -->
-      </div>
+      <!-- Messages Area -->
+      <div id="messages-scroll-area"></div>
 
-      <!-- Auto-expanding Input Section -->
+      <!-- Input Bar -->
       <div class="input-section">
         <div class="input-box-wrapper">
           <textarea
@@ -151,20 +141,16 @@
             placeholder="Ask a question in Maths, Science, or Logic... (Enter to send)"
             aria-label="Message input"
           ></textarea>
-          <button id="btn-send" class="btn-send" title="Send message" aria-label="Send message">
-            ➤
-          </button>
+          <button id="btn-send" class="btn-send" title="Send message" aria-label="Send message">➤</button>
         </div>
         <div class="input-caption">
           KinStudy Assistant for iPad • Shift + Enter for new line • Instant Formula Match enabled
         </div>
       </div>
-
     </main>
-
   </div>
 
-  <!-- 3. Settings Modal Dialog -->
+  <!-- 3. Settings Modal -->
   <div id="settings-modal" class="modal-overlay">
     <div class="modal-dialog">
       <div class="modal-header">
@@ -173,7 +159,6 @@
       </div>
 
       <div class="modal-body">
-        <!-- Gemini API Key -->
         <div class="form-group">
           <label class="form-label" for="input-api-key">
             <span>Gemini API Key (Online Mode)</span>
@@ -189,12 +174,9 @@
             autocomplete="off"
             spellcheck="false"
           >
-          <span class="form-hint">
-            Stored securely in your iPad's localStorage. Zero iPad RAM overhead.
-          </span>
+          <span class="form-hint">Stored securely in your iPad's localStorage.</span>
         </div>
 
-        <!-- System Instructions / Persona -->
         <div class="form-group">
           <div class="form-label">
             <span>System Persona / Instructions</span>
@@ -202,39 +184,25 @@
               Reset Default
             </button>
           </div>
-          <textarea
-            id="input-persona"
-            class="form-textarea"
-            rows="4"
-            placeholder="Persona instructions..."
-          ></textarea>
-          <span class="form-hint">
-            Custom prompt instructing the AI to act as a warm, funny, motivating older sibling mentor.
-          </span>
+          <textarea id="input-persona" class="form-textarea" rows="4"></textarea>
+          <span class="form-hint">Instructs the AI to act as a supportive older sibling and tutor.</span>
         </div>
 
-        <!-- Clear Local Storage -->
         <div class="form-group" style="padding-top:0.5rem; border-top: 1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:0.78rem; font-weight:600; color:var(--status-danger);">Wipe Local Data</div>
             <div style="font-size:0.68rem; color:var(--text-muted);">Deletes saved chats and API key</div>
           </div>
-          <button id="btn-clear-storage" class="btn-danger" type="button">
-            Clear Storage
-          </button>
+          <button id="btn-clear-storage" class="btn-danger" type="button">Clear Storage</button>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button id="btn-save-settings" class="btn-primary" type="button">
-          Save Settings
-        </button>
+        <button id="btn-save-settings" class="btn-primary" type="button">Save Settings</button>
       </div>
     </div>
   </div>
 
-  <!-- Load Vanilla Modular ES6 Application -->
   <script type="module" src="./app.js"></script>
-
 </body>
 </html>
