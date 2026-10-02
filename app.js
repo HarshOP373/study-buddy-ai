@@ -273,21 +273,8 @@ async function loadOfflineModel(onProgress) {
   try {
     const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
 
-    // Apply conservative KV-cache memory override for iPad safety on 1.5B
-    const appConfig = {
-      model_list: [
-        {
-          model: `https://huggingface.co/mlc-ai/${targetModel}`,
-          model_id: targetModel,
-          overrides: {
-            context_window_size: targetModel.includes("1.5B") ? 2048 : 4096
-          }
-        }
-      ]
-    };
-
+    // Load using WebLLM's official internal registry to automatically resolve model_lib and WASM
     const engine = await webllm.CreateMLCEngine(targetModel, {
-      appConfig: appConfig,
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
       }
