@@ -1,6 +1,6 @@
 /**
- * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
- * Fixes: Infinite thinking hangs, WebGPU disposal loops, true streaming, and strict persona toggling.
+ * KinStudy Pro - Modular Vanilla ES6 Architecture
+ * Seamless Multi-Turn Reasoning, Smart Knowledge Blending & WebGPU iPad Guard
  */
 
 // ============================================================================
@@ -11,7 +11,8 @@ const DEFAULT_PERSONA =
   "You are a warm, supportive, motivating older sibling and expert study buddy. " +
   "Help me master Maths, Science, and Logical Reasoning. " +
   "Explain step-by-step with clear calculations, intuitive everyday analogies, and light humor. " +
-  "Keep answers comprehensive, structured, and never judge mistakes.";
+  "When referencing science laws or math formulas, naturally weave them into your answer. " +
+  "Never judge mistakes and always finish your explanations completely.";
 
 const STORAGE_KEYS = {
   CHATS: 'kinstudy_v3_chats',
@@ -85,7 +86,7 @@ function loadPersistedState() {
       messages: [
         {
           role: 'assistant',
-          content: "Hey! 👋 I'm your **study buddy and sibling mentor**! What subject are we mastering today? Throw any Maths problem, Science concept, or Logic puzzle at me!",
+          content: "Hey! 👋 I'm your **study buddy and older sibling mentor**! What subject are we mastering today? Throw any Maths problem, Science question, or Logic puzzle at me!",
           timestamp: Date.now()
         }
       ]
@@ -113,7 +114,7 @@ function saveSettings() {
 }
 
 // ============================================================================
-// 4. Instant Offline Knowledge Base Lookup
+// 4. Knowledge Base Loader & Natural Query Matcher
 // ============================================================================
 
 async function fetchKnowledgeBase() {
@@ -122,43 +123,45 @@ async function fetchKnowledgeBase() {
     if (res.ok) {
       const data = await res.json();
       state.knowledgeBase = data.entries || [];
+      console.log(`[KnowledgeBase] Loaded ${state.knowledgeBase.length} study reference entries.`);
     }
   } catch (err) {
     console.warn('[KnowledgeBase] Offline JSON not found; skipping lookup.');
   }
 }
 
-function findInstantFormulaMatch(userQuery) {
+/**
+ * Searches for relevant formulas/concepts in the knowledge base.
+ * Only triggers if the query actually pertains to mathematics or science concepts.
+ */
+function findRelevantStudyContext(userQuery) {
   if (!state.knowledgeBase || !state.knowledgeBase.length) return null;
   const q = userQuery.toLowerCase().trim();
 
   for (const entry of state.knowledgeBase) {
-    const matchKeyword = entry.keywords && entry.keywords.some(k => q.includes(k.toLowerCase()));
-    const matchTitle = entry.title && q.includes(entry.title.toLowerCase());
-    if (matchKeyword || matchTitle) return entry;
+    // 1. Direct title matching (e.g., "photosynthesis", "quadratic formula")
+    if (q.includes(entry.title.toLowerCase())) {
+      return entry;
+    }
+
+    // 2. Strict keyword matching (ensures whole words, not random letters)
+    if (entry.keywords && entry.keywords.length) {
+      for (const k of entry.keywords) {
+        const regex = new RegExp(`\\b${k.toLowerCase()}\\b`, 'i');
+        if (regex.test(q)) {
+          return entry;
+        }
+      }
+    }
   }
   return null;
 }
 
-function formatFormulaAnswer(entry) {
-  let answer = `### 📐 ${entry.title} (${entry.category})\n\n`;
-  answer += `**Formula:**\n\`\`\`text\n${entry.formula}\n\`\`\`\n\n`;
-  answer += `**Concept:**\n${entry.explanation}\n\n`;
-  if (entry.analogy) answer += `💡 **Everyday Analogy:** ${entry.analogy}\n\n`;
-  if (entry.stepByStep?.length) {
-    answer += `**Step-by-Step Resolution:**\n`;
-    entry.stepByStep.forEach(s => answer += `- ${s}\n`);
-    answer += `\n`;
-  }
-  if (entry.example) answer += `🎯 **Practice Example:**\n${entry.example}`;
-  return answer;
-}
-
 // ============================================================================
-// 5. Dual Engine Core: Online Gemini API & Offline WebLLM
+// 5. Dual Engine Core: Streaming Gemini & WebLLM
 // ============================================================================
 
-async function callGeminiOnline(messages, onChunk) {
+async function callGeminiOnline(messages, systemInstruction, onChunk) {
   if (!state.geminiApiKey.trim()) throw new Error('MISSING_API_KEY');
 
   const modelsToTry = [
@@ -181,10 +184,9 @@ async function callGeminiOnline(messages, onChunk) {
     }
   };
 
-  // Only apply system instruction if explicitly enabled and non-empty
-  if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
+  if (systemInstruction && systemInstruction.trim().length > 0) {
     payload.system_instruction = {
-      parts: [{ text: state.systemPersona.trim() }]
+      parts: [{ text: systemInstruction.trim() }]
     };
   }
 
@@ -208,7 +210,6 @@ async function callGeminiOnline(messages, onChunk) {
         continue;
       }
 
-      // Stream the response smoothly
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
@@ -234,7 +235,7 @@ async function callGeminiOnline(messages, onChunk) {
                 onChunk(fullText);
               }
             } catch (e) {
-              // Ignore partial chunk parse glitches
+              // Ignore partial chunk decode artifacts
             }
           }
         }
@@ -247,7 +248,7 @@ async function callGeminiOnline(messages, onChunk) {
     }
   }
 
-  throw lastError || new Error('Connection failed. Please check your network.');
+  throw lastError || new Error('Connection failed. Please check your internet connection.');
 }
 
 async function loadOfflineModel(onProgress) {
@@ -255,9 +256,14 @@ async function loadOfflineModel(onProgress) {
     return state.webllmEngine;
   }
 
-  // Ensure fresh WebGPU adapter access without stale references
   if (!navigator.gpu) {
     throw new Error('WebGPU is not enabled. Open iPad Settings > Safari > Advanced > Feature Flags and turn ON WebGPU.');
+  }
+
+  // Safe adapter request to avoid WebGPU context errors
+  const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
+  if (!adapter) {
+    throw new Error('iPad WebGPU context is temporarily busy. Please swipe-close the app from the iPad App Switcher and re-open.');
   }
 
   state.isModelLoading = true;
@@ -266,7 +272,6 @@ async function loadOfflineModel(onProgress) {
   try {
     const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
 
-    // Create engine with memory-safe KV limits for iPad
     const engine = await webllm.CreateMLCEngine(OFFLINE_MODEL_ID, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -294,7 +299,6 @@ async function unloadOfflineModel() {
     } catch (e) {
       console.warn('Engine release:', e);
     }
-    // Clean all state pointers so the next reload requests fresh WebGPU handles
     state.webllmEngine = null;
     state.isModelReady = false;
     state.isModelLoading = false;
@@ -302,19 +306,18 @@ async function unloadOfflineModel() {
   }
 }
 
-async function callWebLLMOffline(messages, onChunk) {
+async function callWebLLMOffline(messages, systemInstruction, onChunk) {
   if (!state.webllmEngine || !state.isModelReady) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
 
   const formatted = [];
 
-  // Only apply system instruction if toggled ON and non-empty
-  if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
-    formatted.push({ role: 'system', content: state.systemPersona.trim() });
+  if (systemInstruction && systemInstruction.trim().length > 0) {
+    formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Cap conversation history to the last 2 turns to eliminate the "thinking forever on 2nd message" freeze
+  // Preserve the last 2 turns to ensure stability within Safari memory constraints
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -323,7 +326,6 @@ async function callWebLLMOffline(messages, onChunk) {
     });
   }
 
-  // True progressive token streaming for offline mode
   const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
     messages: formatted,
     temperature: 0.6,
@@ -344,7 +346,7 @@ async function callWebLLMOffline(messages, onChunk) {
 }
 
 // ============================================================================
-// 6. UI Renderers & Touch Controllers
+// 6. UI Renderers & Touch Controls
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -410,7 +412,7 @@ function renderMessages() {
             <span class="prompt-tag">🍕 Algebra</span>
             <span class="prompt-desc">Explain quadratic formula with simple analogies</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\'s Law and how do volts, amps, and ohms work together?')">
+          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\\'s Law and how do volts, amps, and ohms work together?')">
             <span class="prompt-tag">⚡ Physics</span>
             <span class="prompt-desc">Ohm's Law explained through a water hose analogy</span>
           </div>
@@ -546,7 +548,7 @@ function updateOfflineBarUI() {
 }
 
 // ============================================================================
-// 7. Message Sending & Controller Logic
+// 7. Message Dispatcher & Natural Knowledge Synthesis
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -571,7 +573,7 @@ async function handleSendMessage() {
   sendBtn.disabled = true;
   inputEl.disabled = true;
 
-  // Add User Message
+  // Add user prompt to conversation
   chat.messages.push({ role: 'user', content: text, timestamp: Date.now() });
   if (chat.messages.filter(m => m.role === 'user').length === 1) {
     chat.title = text.length > 26 ? text.slice(0, 26) + '...' : text;
@@ -583,27 +585,42 @@ async function handleSendMessage() {
   renderChatList();
   renderMessages();
 
-  // Insert temporary thinking message
+  // Insert streaming container
   const assistantMsg = { role: 'assistant', content: '', timestamp: Date.now() };
   chat.messages.push(assistantMsg);
   renderMessages();
 
   try {
-    const formulaMatch = findInstantFormulaMatch(text);
-    if (formulaMatch) {
-      const matchText = `<span class="instant-badge">⚡ Instant Formula Match</span>\n\n` + formatFormulaAnswer(formulaMatch);
-      assistantMsg.content = matchText;
-      updateStreamingBubble(matchText);
-    } else if (state.currentMode === 'online') {
+    // 1. Build Base System Instruction
+    let finalInstruction = '';
+    if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
+      finalInstruction = state.systemPersona.trim();
+    }
+
+    // 2. Mix Knowledge Base naturally if a concept is detected
+    const matchedStudyData = findRelevantStudyContext(text);
+    if (matchedStudyData) {
+      const knowledgeContext = 
+        `\n\n[RELEVANT STUDY REFERENCE]:\n` +
+        `- Subject: ${matchedStudyData.title} (${matchedStudyData.category})\n` +
+        `- Formula/Equation: ${matchedStudyData.formula}\n` +
+        `- Key Fact: ${matchedStudyData.explanation}\n` +
+        `- Guidance: Blend this reference naturally into your response so the explanation is clear and accurate. Do not dump raw JSON.`;
+
+      finalInstruction += knowledgeContext;
+    }
+
+    // 3. Dispatch to Active Engine
+    if (state.currentMode === 'online') {
       const history = chat.messages.slice(0, -1);
-      const reply = await callGeminiOnline(history, (streamingText) => {
+      const reply = await callGeminiOnline(history, finalInstruction, (streamingText) => {
         assistantMsg.content = streamingText;
         updateStreamingBubble(streamingText);
       });
       assistantMsg.content = reply;
     } else {
       const history = chat.messages.slice(0, -1);
-      const reply = await callWebLLMOffline(history, (streamingText) => {
+      const reply = await callWebLLMOffline(history, finalInstruction, (streamingText) => {
         assistantMsg.content = streamingText;
         updateStreamingBubble(streamingText);
       });
@@ -614,7 +631,7 @@ async function handleSendMessage() {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top yellow bar to initialize WebGPU shaders.';
+      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
     } else {
       assistantMsg.content = `⚠️ **Error:** ${err.message || err}`;
     }
@@ -671,7 +688,6 @@ async function setEngineMode(mode) {
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) modeSelect.value = mode;
 
-  // Free memory immediately if leaving offline mode
   if (mode === 'online' && state.webllmEngine) {
     await unloadOfflineModel();
   }
