@@ -1,6 +1,6 @@
 /**
  * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
- * Multi-Model Online & Multi-Model Offline Selector with Dynamic RAM Reporting
+ * Multi-Model Online, Specialized Coding WebLLM Engine & ChatGPT-Style Code Boxes
  */
 
 // ============================================================================
@@ -8,11 +8,10 @@
 // ============================================================================
 
 const DEFAULT_PERSONA = 
-  "You are a warm, supportive, motivating older sibling and expert study buddy. " +
-  "Help me master Maths, Science, and Logical Reasoning. " +
-  "Explain step-by-step with clear calculations, intuitive everyday analogies, and light humor. " +
-  "When referencing science laws or math formulas, naturally weave them into your answer. " +
-  "Never judge mistakes and always finish your explanations completely.";
+  "You are a warm, supportive older sibling, expert study buddy, and sharp coder. " +
+  "Help me master Maths, Science, Logic, and Coding (HTML, CSS, JS, Python). " +
+  "When providing code, provide complete, working, well-structured code inside Markdown code blocks with the language tag. " +
+  "Never judge mistakes and always finish explanations and code completely.";
 
 const STORAGE_KEYS = {
   CHATS: 'kinstudy_v3_chats',
@@ -39,13 +38,13 @@ const state = {
   systemPersona: DEFAULT_PERSONA,
   personaEnabled: true,
   theme: 'dark',
-  currentMode: 'online', // 'online' | 'offline'
+  currentMode: 'online',
   onlineModel: 'gemini-3.8-flash',
   offlineModel: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
 
   // Engine state
   webllmEngine: null,
-  loadedModelId: null, // Tracks currently active model in RAM
+  loadedModelId: null,
   isModelLoading: false,
   isModelReady: false,
   isGenerating: false,
@@ -89,7 +88,7 @@ function loadPersistedState() {
       messages: [
         {
           role: 'assistant',
-          content: "Hey! 👋 I'm your **study buddy and older sibling mentor**! What subject are we mastering today? Throw any Maths problem, Science question, or Logic puzzle at me!",
+          content: "Hey! 👋 I'm your **study buddy and coding mentor**! What are we building or studying today? Ask any Maths, Science, or Code question (HTML, Python, Games, JS)!",
           timestamp: Date.now()
         }
       ]
@@ -118,7 +117,7 @@ function saveSettings() {
 }
 
 // ============================================================================
-// 4. Knowledge Base Loader & Natural Query Matcher
+// 4. Knowledge Base Loader & Matcher
 // ============================================================================
 
 async function fetchKnowledgeBase() {
@@ -127,7 +126,6 @@ async function fetchKnowledgeBase() {
     if (res.ok) {
       const data = await res.json();
       state.knowledgeBase = data.entries || [];
-      console.log(`[KnowledgeBase] Loaded ${state.knowledgeBase.length} study reference entries.`);
     }
   } catch (err) {
     console.warn('[KnowledgeBase] Offline JSON not found; skipping lookup.');
@@ -139,15 +137,11 @@ function findRelevantStudyContext(userQuery) {
   const q = userQuery.toLowerCase().trim();
 
   for (const entry of state.knowledgeBase) {
-    if (q.includes(entry.title.toLowerCase())) {
-      return entry;
-    }
+    if (q.includes(entry.title.toLowerCase())) return entry;
     if (entry.keywords && entry.keywords.length) {
       for (const k of entry.keywords) {
         const regex = new RegExp(`\\b${k.toLowerCase()}\\b`, 'i');
-        if (regex.test(q)) {
-          return entry;
-        }
+        if (regex.test(q)) return entry;
       }
     }
   }
@@ -155,7 +149,7 @@ function findRelevantStudyContext(userQuery) {
 }
 
 // ============================================================================
-// 5. Dual Engine Core: Streaming Gemini & WebLLM
+// 5. Dual Engine Core: Gemini Online & WebLLM Offline
 // ============================================================================
 
 async function callGeminiOnline(messages, systemInstruction, onChunk) {
@@ -249,7 +243,6 @@ async function callGeminiOnline(messages, systemInstruction, onChunk) {
 async function loadOfflineModel(onProgress) {
   const targetModel = state.offlineModel;
 
-  // If a different model is already loaded, cleanly unload it first
   if (state.webllmEngine && state.loadedModelId !== targetModel) {
     await unloadOfflineModel();
   }
@@ -273,7 +266,7 @@ async function loadOfflineModel(onProgress) {
   try {
     const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
 
-    // Load using WebLLM's official internal registry to automatically resolve model_lib and WASM
+    // Initializing directly with targetModel resolves model_lib automatically
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -323,7 +316,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Keep last 2 turns to prevent context exhaustion in WebGPU RAM
+  // Keep last 2 turns to ensure stability within Safari memory constraints
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -358,7 +351,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk) {
 }
 
 // ============================================================================
-// 6. UI Renderers & Touch Controls
+// 6. UI Renderers & ChatGPT-Style Code Block Markdown
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -405,6 +398,67 @@ function renderChatList() {
   });
 }
 
+/**
+ * Enhanced Markdown Parser with ChatGPT-style Code Block Headers & One-Tap Copy
+ */
+function formatMarkdown(text) {
+  if (!text) return '<span class="typing-dot">Thinking...</span>';
+
+  // 1. Extract and format multi-line code blocks ```language ... ```
+  let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const displayLang = lang.trim() || 'code';
+    const escapedCode = code
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `
+      <div class="code-block-container">
+        <div class="code-block-header">
+          <span class="code-lang-label">${displayLang}</span>
+          <button class="btn-copy-code" onclick="window.copyCodeFromBlock(this)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy code</span>
+          </button>
+        </div>
+        <pre><code class="language-${displayLang}">${escapedCode}</code></pre>
+      </div>
+    `;
+  });
+
+  // 2. Inline code `...`
+  formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+  // 3. Bold & Italics
+  formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  // 4. Paragraphs (ignore blocks already wrapped in .code-block-container)
+  const parts = formatted.split(/\n\n+/);
+  return parts.map(p => {
+    if (p.includes('<div class="code-block-container">')) return p;
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+}
+
+// Global copy handler for individual code blocks
+window.copyCodeFromBlock = function(btn) {
+  const container = btn.closest('.code-block-container');
+  const codeEl = container.querySelector('code');
+  if (!codeEl) return;
+
+  navigator.clipboard.writeText(codeEl.innerText).then(() => {
+    const span = btn.querySelector('span');
+    const originalText = span.textContent;
+    span.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      span.textContent = originalText;
+      btn.classList.remove('copied');
+    }, 1800);
+  });
+};
+
 function renderMessages() {
   const scrollArea = document.getElementById('messages-scroll-area');
   const chat = getActiveChat();
@@ -418,8 +472,16 @@ function renderMessages() {
       <div class="welcome-hero">
         <div class="welcome-avatar">⚡</div>
         <h2>KinStudy Assistant</h2>
-        <p>Your instant offline & online study mentor. Ask any question in Maths, Science, or Logic!</p>
+        <p>Your instant offline & online study and coding companion. Ask anything!</p>
         <div class="quick-prompts-grid">
+          <div class="prompt-card" onclick="window.sendPrompt('Create a playable Flappy Bird game in a single HTML file with CSS and JavaScript.')">
+            <span class="prompt-tag">🎮 Game Dev</span>
+            <span class="prompt-desc">Create Flappy Bird in a single HTML file</span>
+          </div>
+          <div class="prompt-card" onclick="window.sendPrompt('Write a Python script that calculates prime numbers step by step.')">
+            <span class="prompt-tag">🐍 Python</span>
+            <span class="prompt-desc">Prime number generator with explanations</span>
+          </div>
           <div class="prompt-card" onclick="window.sendPrompt('Explain the quadratic formula with pizza slices!')">
             <span class="prompt-tag">🍕 Algebra</span>
             <span class="prompt-desc">Explain quadratic formula with simple analogies</span>
@@ -427,14 +489,6 @@ function renderMessages() {
           <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\\'s Law and how do volts, amps, and ohms work together?')">
             <span class="prompt-tag">⚡ Physics</span>
             <span class="prompt-desc">Ohm's Law explained through a water hose analogy</span>
-          </div>
-          <div class="prompt-card" onclick="window.sendPrompt('What is the formula for photosynthesis?')">
-            <span class="prompt-tag">🌱 Biology</span>
-            <span class="prompt-desc">Photosynthesis chemical equation breakdown</span>
-          </div>
-          <div class="prompt-card" onclick="window.sendPrompt('Explain Pythagorean theorem with step-by-step calculations.')">
-            <span class="prompt-tag">📐 Geometry</span>
-            <span class="prompt-desc">Calculate right triangle hypotenuse easily</span>
           </div>
         </div>
       </div>
@@ -458,13 +512,22 @@ function renderMessages() {
     const meta = document.createElement('div');
     meta.className = 'message-meta';
 
+    let senderLabel = 'You';
+    if (!isUser) {
+      if (state.currentMode === 'online') {
+        senderLabel = 'Gemini';
+      } else {
+        senderLabel = state.offlineModel.includes("Coder") ? "Qwen Coder" : "WebLLM Qwen";
+      }
+    }
+
     const sender = document.createElement('span');
     sender.className = 'sender-name';
-    sender.textContent = isUser ? 'You' : (state.currentMode === 'online' ? 'Gemini' : 'WebLLM Qwen');
+    sender.textContent = senderLabel;
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'btn-copy-bubble';
-    copyBtn.innerHTML = '📋 Copy';
+    copyBtn.innerHTML = '📋 Copy Message';
     copyBtn.onclick = () => copyText(msg.content, copyBtn);
 
     meta.appendChild(sender);
@@ -494,20 +557,10 @@ function updateStreamingBubble(text) {
   }
 }
 
-function formatMarkdown(text) {
-  if (!text) return '<span class="typing-dot">Thinking...</span>';
-  let escape = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  escape = escape.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-  escape = escape.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  escape = escape.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  const paras = escape.split(/\n\n+/);
-  return paras.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
-}
-
 function copyText(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = '✅ Copied';
-    setTimeout(() => btn.textContent = '📋 Copy', 1500);
+    setTimeout(() => btn.textContent = '📋 Copy Message', 1500);
   });
 }
 
@@ -531,11 +584,20 @@ function updateOfflineBarUI() {
     if (offlineSelect) offlineSelect.style.display = 'block';
     if (footerMode) footerMode.innerHTML = '<span class="dot offline"></span> Offline WebGPU';
 
-    const shortOfflineName = state.offlineModel.includes("1.5B") ? "Qwen2.5-1.5B (Deep)" : "Qwen2.5-0.5B (Light)";
+    let shortOfflineName = "Qwen2.5-0.5B (Light)";
+    let approxRAM = "~380 MB";
+
+    if (state.offlineModel.includes("Coder")) {
+      shortOfflineName = "Qwen2.5-Coder-1.5B (Code)";
+      approxRAM = "~980 MB";
+    } else if (state.offlineModel.includes("1.5B")) {
+      shortOfflineName = "Qwen2.5-1.5B (Deep)";
+      approxRAM = "~1150 MB";
+    }
+
     if (modelTag) modelTag.textContent = shortOfflineName;
 
     if (state.isModelReady) {
-      const approxRAM = state.loadedModelId?.includes("1.5B") ? "~1150 MB" : "~380 MB";
       ramBadge.textContent = `${approxRAM} in RAM`;
       ramBadge.className = 'ram-badge ready';
 
@@ -568,7 +630,7 @@ function updateOfflineBarUI() {
 }
 
 // ============================================================================
-// 7. Message Dispatcher & Natural Knowledge Synthesis
+// 7. Message Dispatcher
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -621,7 +683,7 @@ async function handleSendMessage() {
         `- Subject: ${matchedStudyData.title} (${matchedStudyData.category})\n` +
         `- Formula/Equation: ${matchedStudyData.formula}\n` +
         `- Key Fact: ${matchedStudyData.explanation}\n` +
-        `- Guidance: Blend this reference naturally into your response so the explanation is clear and accurate. Do not dump raw JSON.`;
+        `- Guidance: Blend this reference naturally into your response so the explanation is clear and accurate.`;
 
       finalInstruction += knowledgeContext;
     }
@@ -799,7 +861,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     offlineModelSelect.onchange = async (e) => {
       state.offlineModel = e.target.value;
       saveSettings();
-      // If a model is currently active, prompt clean switch
       if (state.webllmEngine && state.loadedModelId !== state.offlineModel) {
         await unloadOfflineModel();
       }
