@@ -1,6 +1,6 @@
 /**
  * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
- * Multi-Model Online, Specialized Coding WebLLM Engine & ChatGPT-Style Code Boxes
+ * Multi-Model Online, Multi-Model Offline, Real-Time Streaming, Stop Button & Code Blocks
  */
 
 // ============================================================================
@@ -48,6 +48,7 @@ const state = {
   isModelLoading: false,
   isModelReady: false,
   isGenerating: false,
+  abortController: null,
   lastTokensGenerated: 0,
 
   // Knowledge base
@@ -152,7 +153,7 @@ function findRelevantStudyContext(userQuery) {
 // 5. Dual Engine Core: Gemini Online & WebLLM Offline
 // ============================================================================
 
-async function callGeminiOnline(messages, systemInstruction, onChunk) {
+async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
   if (!state.geminiApiKey.trim()) throw new Error('MISSING_API_KEY');
 
   const modelsToTry = [
@@ -190,7 +191,8 @@ async function callGeminiOnline(messages, systemInstruction, onChunk) {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: signal
       });
 
       if (!response.ok) {
@@ -207,6 +209,11 @@ async function callGeminiOnline(messages, systemInstruction, onChunk) {
       let buffer = '';
 
       while (true) {
+        if (signal && signal.aborted) {
+          reader.cancel();
+          break;
+        }
+
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -232,6 +239,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk) {
 
       if (fullText.trim()) return fullText;
     } catch (err) {
+      if (err.name === 'AbortError') throw err;
       if (err.message === 'INVALID_API_KEY' || err.message === 'MISSING_API_KEY') throw err;
       lastError = err;
     }
@@ -266,7 +274,6 @@ async function loadOfflineModel(onProgress) {
   try {
     const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
 
-    // Initializing directly with targetModel resolves model_lib automatically
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -305,7 +312,7 @@ async function unloadOfflineModel() {
   }
 }
 
-async function callWebLLMOffline(messages, systemInstruction, onChunk) {
+async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
   if (!state.webllmEngine || !state.isModelReady) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
@@ -316,7 +323,6 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Keep last 2 turns to ensure stability within Safari memory constraints
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -336,6 +342,9 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk) {
   let tokenCount = 0;
 
   for await (const chunk of asyncChunkGenerator) {
+    if (signal && signal.aborted) {
+      break;
+    }
     const delta = chunk.choices[0]?.delta?.content || '';
     if (delta) {
       fullReply += delta;
@@ -347,11 +356,11 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk) {
   state.lastTokensGenerated = tokenCount;
   updateOfflineBarUI();
 
-  return fullReply || 'Could not generate a response. Please try again.';
+  return fullReply || '(Stopped by user)';
 }
 
 // ============================================================================
-// 6. UI Renderers & ChatGPT-Style Code Block Markdown
+// 6. UI Renderers & Code Block Markdown
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -398,13 +407,9 @@ function renderChatList() {
   });
 }
 
-/**
- * Enhanced Markdown Parser with ChatGPT-style Code Block Headers & One-Tap Copy
- */
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
-  // 1. Extract and format multi-line code blocks ```language ... ```
   let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const displayLang = lang.trim() || 'code';
     const escapedCode = code
@@ -426,14 +431,10 @@ function formatMarkdown(text) {
     `;
   });
 
-  // 2. Inline code `...`
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-  // 3. Bold & Italics
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  // 4. Paragraphs (ignore blocks already wrapped in .code-block-container)
   const parts = formatted.split(/\n\n+/);
   return parts.map(p => {
     if (p.includes('<div class="code-block-container">')) return p;
@@ -441,7 +442,6 @@ function formatMarkdown(text) {
   }).join('');
 }
 
-// Global copy handler for individual code blocks
 window.copyCodeFromBlock = function(btn) {
   const container = btn.closest('.code-block-container');
   const codeEl = container.querySelector('code');
@@ -630,7 +630,7 @@ function updateOfflineBarUI() {
 }
 
 // ============================================================================
-// 7. Message Dispatcher
+// 7. Message Dispatcher with Abort & Stop Support
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -644,6 +644,7 @@ window.sendPrompt = function(promptText) {
 async function handleSendMessage() {
   const inputEl = document.getElementById('chat-input');
   const sendBtn = document.getElementById('btn-send');
+  const stopContainer = document.getElementById('stop-generation-container');
   const text = inputEl.value.trim();
 
   if (!text || state.isGenerating) return;
@@ -652,8 +653,11 @@ async function handleSendMessage() {
   if (!chat) return;
 
   state.isGenerating = true;
+  state.abortController = new AbortController();
+
   sendBtn.disabled = true;
   inputEl.disabled = true;
+  if (stopContainer) stopContainer.style.display = 'flex';
 
   chat.messages.push({ role: 'user', content: text, timestamp: Date.now() });
   if (chat.messages.filter(m => m.role === 'user').length === 1) {
@@ -693,18 +697,20 @@ async function handleSendMessage() {
       const reply = await callGeminiOnline(history, finalInstruction, (streamingText) => {
         assistantMsg.content = streamingText;
         updateStreamingBubble(streamingText);
-      });
+      }, state.abortController.signal);
       assistantMsg.content = reply;
     } else {
       const history = chat.messages.slice(0, -1);
       const reply = await callWebLLMOffline(history, finalInstruction, (streamingText) => {
         assistantMsg.content = streamingText;
         updateStreamingBubble(streamingText);
-      });
+      }, state.abortController.signal);
       assistantMsg.content = reply;
     }
   } catch (err) {
-    if (err.message === 'MISSING_API_KEY') {
+    if (err.name === 'AbortError') {
+      // Stopped normally by user via stop button
+    } else if (err.message === 'MISSING_API_KEY') {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
@@ -715,6 +721,9 @@ async function handleSendMessage() {
     updateStreamingBubble(assistantMsg.content);
   } finally {
     state.isGenerating = false;
+    state.abortController = null;
+
+    if (stopContainer) stopContainer.style.display = 'none';
     sendBtn.disabled = false;
     inputEl.disabled = false;
     saveChats();
@@ -890,6 +899,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (btnUnload) {
     btnUnload.onclick = async () => {
       await unloadOfflineModel();
+    };
+  }
+
+  const stopBtn = document.getElementById('btn-stop-generating');
+  if (stopBtn) {
+    stopBtn.onclick = () => {
+      if (state.abortController) {
+        state.abortController.abort();
+      }
     };
   }
 
