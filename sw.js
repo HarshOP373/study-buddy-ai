@@ -1,16 +1,15 @@
-/**
- * KinStudy Service Worker
- * Ensures offline shell caching while bypassing large WebGPU ONNX weights & CDNs
- */
+const CACHE_NAME = 'kinstudy-offline-v2';
 
-const CACHE_NAME = 'kinstudy-v1';
+// The basic UI files needed to load the app offline
 const STATIC_ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js'
+  './app.js',
+  './manifest.json'
 ];
 
+// 1. Install Phase: Cache the UI files
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
@@ -18,6 +17,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
+// 2. Activate Phase: Clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -31,27 +31,31 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// 3. Fetch Phase: Serve UI from cache, bypass models
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // CRITICAL: Bypass caching for large ONNX weights, WebGPU binaries, and external pipelines
+  // CRITICAL BYPASS: Do not let the Service Worker cache large AI weights.
+  // Transformers.js and WebLLM handle their own storage via IndexedDB.
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('hf.co') ||
     url.hostname.includes('jsdelivr.net') ||
+    url.hostname.includes('esm.run') ||
     url.pathname.endsWith('.onnx') ||
-    url.pathname.endsWith('.bin') ||
     url.pathname.endsWith('.wasm') ||
+    url.pathname.endsWith('.bin') ||
     url.hostname.includes('googleapis.com')
   ) {
-    return; // Pass through directly to native network
+    return; // Let the browser handle these natively
   }
 
-  // Cache-first fallback for local static assets
+  // Serve static UI files from the cache first, fallback to network
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      return fetch(event.request);
+      return cachedResponse || fetch(event.request);
+    }).catch(() => {
+      // If offline and file isn't cached, do nothing (prevents crashes)
     })
   );
 });
