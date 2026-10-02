@@ -96,11 +96,17 @@
             <option value="offline">💾 Offline (WebGPU)</option>
           </select>
 
-          <!-- Online Model Selector -->
+          <!-- Online Model Selector (3 Options) -->
           <select id="online-model-select" class="mode-select-pill" aria-label="Online Model">
             <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
             <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
             <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+          </select>
+
+          <!-- Offline Model Selector (2 Options) -->
+          <select id="offline-model-select" class="mode-select-pill" style="display:none;" aria-label="Offline Model">
+            <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen2.5-0.5B (Light)</option>
+            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen2.5-1.5B (Deep)</option>
           </select>
 
           <button id="btn-top-export" class="btn-top-action" title="Export Notes">
@@ -117,7 +123,7 @@
         <div class="status-bar-content">
           <div class="status-left">
             <span id="ram-badge" class="ram-badge">RAM Inactive</span>
-            <span id="status-msg">Zero background memory used. Tap to load offline AI.</span>
+            <span id="status-msg">Zero background memory used. Tap to load selected model.</span>
           </div>
           <div style="display:flex; gap:0.5rem; align-items:center;">
             <button id="btn-load-model" class="btn-load-model">⚡ Load Engine</button>
@@ -164,7 +170,6 @@
       </div>
 
       <div class="modal-body">
-        <!-- API Key Group -->
         <div class="form-group">
           <div class="form-label">
             <span>Gemini API Key (Online Mode)</span>
@@ -183,7 +188,6 @@
           <span class="form-hint">Stored strictly inside your iPad's private browser memory.</span>
         </div>
 
-        <!-- Custom Instructions Switch & Editor -->
         <div class="form-group box-card">
           <div class="form-label" style="margin-bottom:0.4rem;">
             <label class="toggle-control">
@@ -202,7 +206,6 @@
           <span class="form-hint">When disabled, the AI responds neutrally without any persona rules.</span>
         </div>
 
-        <!-- Wipe Data -->
         <div class="form-group" style="padding-top:0.75rem; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:0.82rem; font-weight:700; color:var(--status-danger);">Wipe Local Data</div>
