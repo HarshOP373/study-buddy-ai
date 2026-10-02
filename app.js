@@ -182,7 +182,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 2048
+      maxOutputTokens: 4078
     }
   };
 
@@ -306,7 +306,7 @@ async function callWebLLMOffline(messages, systemPrompt) {
   const completion = await state.webllmEngine.chat.completions.create({
     messages: formatted,
     temperature: 0.6,
-    max_tokens: 450,
+    max_tokens: 2048,
     stream: false // Disables streaming to avoid disposed tensor context bug
   });
 
