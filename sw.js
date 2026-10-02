@@ -1,13 +1,13 @@
-const CACHE_NAME = 'study-buddy-cache-v3';
+const CACHE_NAME = 'study-buddy-cache-v4';
 
-// Pre-cache all local assets so offline mode works with Airplane Mode enabled
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './study-data.json',
-  './manifest.json'
+  './manifest.json',
+  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -33,29 +33,25 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Let model weights, huggingface, and WebLLM CDN bypass the service worker directly
+  // Model weights bypass service worker to be handled directly by CacheStorage
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
-    url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('esm.run') ||
-    url.hostname.includes('jsdelivr.net')
+    url.hostname.includes('googleapis.com')
   ) {
-    return; // Let browser fetch natively without service worker interception
+    return;
   }
 
-  // Cache-first strategy with safe fallback to prevent "TypeError: Load failed"
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
         return cachedResponse;
       }
       return fetch(event.request).catch(() => {
-        // Return offline fallback or empty response instead of crashing
         if (event.request.mode === 'navigate') {
           return caches.match('./index.html');
         }
-        return new Response('Network error occurred', {
+        return new Response('Network offline', {
           status: 408,
           headers: { 'Content-Type': 'text/plain' },
         });
