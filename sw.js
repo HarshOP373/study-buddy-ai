@@ -1,4 +1,4 @@
-const CACHE_NAME = 'study-buddy-cache-v4';
+const CACHE_NAME = 'study-buddy-cache-v5';
 
 const PRECACHE_ASSETS = [
   './',
@@ -33,7 +33,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Model weights bypass service worker to be handled directly by CacheStorage
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
