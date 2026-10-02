@@ -177,15 +177,21 @@
           <span class="form-hint">Stored securely in your iPad's localStorage.</span>
         </div>
 
+        <!-- System Instructions / Persona with Enable Toggle -->
         <div class="form-group">
           <div class="form-label">
-            <span>System Persona / Instructions</span>
+            <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+              <input type="checkbox" id="check-enable-persona" checked style="accent-color: var(--accent-primary);">
+              <span>Enable Custom Instructions</span>
+            </label>
             <button id="btn-reset-persona" type="button" style="background:none; border:none; color:var(--text-accent); font-size:0.7rem; cursor:pointer;">
               Reset Default
             </button>
           </div>
           <textarea id="input-persona" class="form-textarea" rows="4"></textarea>
-          <span class="form-hint">Instructs the AI to act as a supportive older sibling and tutor.</span>
+          <span class="form-hint">
+            Uncheck the box above to disable custom instructions completely.
+          </span>
         </div>
 
         <div class="form-group" style="padding-top:0.5rem; border-top: 1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
