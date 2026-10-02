@@ -1,31 +1,32 @@
-const CACHE_NAME = 'study-buddy-cache-v6';
+/**
+ * KinStudy Service Worker
+ * Ensures offline shell caching while bypassing large WebGPU ONNX weights & CDNs
+ */
 
-const PRECACHE_ASSETS = [
+const CACHE_NAME = 'kinstudy-v1';
+const STATIC_ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
-  './study-data.json',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js'
+  './app.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
-    })
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME) return caches.delete(key);
+        })
+      )
+    )
   );
   self.clients.claim();
 });
@@ -33,28 +34,24 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // CRITICAL: Bypass caching for large ONNX weights, WebGPU binaries, and external pipelines
   if (
     url.hostname.includes('huggingface.co') ||
-    url.hostname.includes('cdn-lfs') ||
+    url.hostname.includes('hf.co') ||
+    url.hostname.includes('jsdelivr.net') ||
+    url.pathname.endsWith('.onnx') ||
+    url.pathname.endsWith('.bin') ||
+    url.pathname.endsWith('.wasm') ||
     url.hostname.includes('googleapis.com')
   ) {
-    return;
+    return; // Pass through directly to native network
   }
 
+  // Cache-first fallback for local static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('./index.html');
-        }
-        return new Response('Network offline', {
-          status: 408,
-          headers: { 'Content-Type': 'text/plain' },
-        });
-      });
+      if (cachedResponse) return cachedResponse;
+      return fetch(event.request);
     })
   );
 });
