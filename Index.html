@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KinStudy - iPad AI Study Buddy</title>
+  <meta name="description" content="Dual Online/Offline Study Buddy for iPad running on GitHub Pages with Gemini API and on-device WebLLM.">
+
+  <!-- iPad & iOS Safari PWA Meta Tags -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="KinStudy">
+  <meta name="theme-color" content="#090d16">
+  <meta name="format-detection" content="telephone=no">
+
+  <link rel="icon" type="image/svg+xml" href="./icon.svg">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+  <link rel="manifest" href="./manifest.json">
+
+  <!-- Typography & Styling -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- Full App Shell -->
+  <div id="app-container">
+
+    <!-- Mobile/iPad Portrait Backdrop -->
+    <div id="sidebar-backdrop"></div>
+
+    <!-- 1. Collapsible Sidebar (ChatGPT / Gemini matching) -->
+    <aside id="sidebar">
+      
+      <!-- Brand Header -->
+      <div class="sidebar-header">
+        <div class="brand-badge">
+          <div class="brand-icon">🎓</div>
+          <div class="brand-text">
+            <h1>KinStudy <span class="pill">iPad</span></h1>
+            <p>Study Buddy & Mentor</p>
+          </div>
+        </div>
+        <button id="btn-sidebar-close" class="btn-icon-close" aria-label="Close sidebar">✕</button>
+      </div>
+
+      <!-- + New Chat Button -->
+      <div class="new-chat-container">
+        <button id="btn-new-chat" class="btn-new-chat">
+          <span>+ New Chat</span>
+          <span>✨</span>
+        </button>
+      </div>
+
+      <!-- Saved Conversations List (localStorage) -->
+      <div class="chat-list-container">
+        <div class="section-label">Conversations</div>
+        <div id="chat-list">
+          <!-- Dynamic chat sessions injected by app.js -->
+        </div>
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="sidebar-footer">
+        <div class="footer-row">
+          <div class="mode-indicator" id="footer-mode-label">
+            <span class="dot online"></span>
+            <span>Online Gemini</span>
+          </div>
+          <button id="btn-theme-toggle" class="btn-theme-toggle" title="Toggle Light/Dark Theme">
+            ☀️ Light
+          </button>
+        </div>
+
+        <button id="btn-export-notes" class="btn-footer" title="Save notes as .txt to iPad Files">
+          <span>📄 Export Notes (.txt)</span>
+          <span style="font-size:0.68rem; color:var(--text-accent);">Save</span>
+        </button>
+
+        <button id="btn-open-settings" class="btn-footer" title="Open Settings">
+          <span>⚙️ Settings & Persona</span>
+          <span style="font-size:0.68rem; color:var(--text-muted);">API</span>
+        </button>
+      </div>
+
+    </aside>
+
+    <!-- 2. Main Chat View -->
+    <main id="main-chat">
+
+      <!-- Top Navigation Bar -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <button id="btn-menu-toggle" class="btn-menu-toggle" aria-label="Toggle sidebar">
+            ☰
+          </button>
+          <div class="chat-header-title" id="chat-header-title">
+            Welcome Study Session
+          </div>
+        </div>
+
+        <div class="top-bar-right">
+          <!-- Dual Mode Selector Dropdown -->
+          <select id="mode-select" class="mode-select-pill" aria-label="Select AI Mode">
+            <option value="online">Online Mode (Gemini API)</option>
+            <option value="offline">Offline Mode (WebLLM)</option>
+          </select>
+
+          <!-- Quick Actions -->
+          <button id="btn-top-export" class="btn-top-action" title="Export study notes to Files">
+            <span>📥</span>
+            <span style="font-size: 0.72rem;">Notes</span>
+          </button>
+
+          <button id="btn-top-settings" class="btn-top-action" title="Settings">
+            <span>⚙️</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Offline Mode Status / Memory Lag Prevention Bar -->
+      <div id="offline-status-bar">
+        <div class="status-bar-content">
+          <div class="status-left">
+            <span id="ram-badge" class="ram-badge">0 MB in RAM</span>
+            <span id="status-msg">Zero background RAM used. Tap to initialize Qwen2.5-1.5B.</span>
+          </div>
+          <div style="display:flex; gap:0.4rem; align-items:center;">
+            <button id="btn-load-model" class="btn-load-model">Load Offline Model</button>
+            <button id="btn-unload-model" class="btn-unload-model" style="display:none;">Free RAM</button>
+          </div>
+        </div>
+        <div id="load-progress-bar" class="load-progress-bar">
+          <div id="load-progress-fill" class="load-progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Messages Scroll Area -->
+      <div id="messages-scroll-area">
+        <!-- Chat bubbles rendered dynamically by app.js -->
+      </div>
+
+      <!-- Auto-expanding Input Section -->
+      <div class="input-section">
+        <div class="input-box-wrapper">
+          <textarea
+            id="chat-input"
+            rows="1"
+            placeholder="Ask a question in Maths, Science, or Logic... (Enter to send)"
+            aria-label="Message input"
+          ></textarea>
+          <button id="btn-send" class="btn-send" title="Send message" aria-label="Send message">
+            ➤
+          </button>
+        </div>
+        <div class="input-caption">
+          KinStudy Assistant for iPad • Shift + Enter for new line • Instant Formula Match enabled
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- 3. Settings Modal Dialog -->
+  <div id="settings-modal" class="modal-overlay">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Study Assistant Settings</h3>
+        <button id="btn-modal-close" class="btn-modal-close" aria-label="Close modal">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Gemini API Key -->
+        <div class="form-group">
+          <label class="form-label" for="input-api-key">
+            <span>Gemini API Key (Online Mode)</span>
+            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" style="font-size:0.7rem; color:var(--text-accent); text-decoration:none;">
+              Get Free Key ↗
+            </a>
+          </label>
+          <input
+            id="input-api-key"
+            class="form-input"
+            type="password"
+            placeholder="AIzaSy..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <span class="form-hint">
+            Stored securely in your iPad's localStorage. Zero iPad RAM overhead.
+          </span>
+        </div>
+
+        <!-- System Instructions / Persona -->
+        <div class="form-group">
+          <div class="form-label">
+            <span>System Persona / Instructions</span>
+            <button id="btn-reset-persona" type="button" style="background:none; border:none; color:var(--text-accent); font-size:0.7rem; cursor:pointer;">
+              Reset Default
+            </button>
+          </div>
+          <textarea
+            id="input-persona"
+            class="form-textarea"
+            rows="4"
+            placeholder="Persona instructions..."
+          ></textarea>
+          <span class="form-hint">
+            Custom prompt instructing the AI to act as a warm, funny, motivating older sibling mentor.
+          </span>
+        </div>
+
+        <!-- Clear Local Storage -->
+        <div class="form-group" style="padding-top:0.5rem; border-top: 1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.78rem; font-weight:600; color:var(--status-danger);">Wipe Local Data</div>
+            <div style="font-size:0.68rem; color:var(--text-muted);">Deletes saved chats and API key</div>
+          </div>
+          <button id="btn-clear-storage" class="btn-danger" type="button">
+            Clear Storage
+          </button>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-save-settings" class="btn-primary" type="button">
+          Save Settings
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Vanilla Modular ES6 Application -->
+  <script type="module" src="./app.js"></script>
+
+</body>
+</html>
