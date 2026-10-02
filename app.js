@@ -1,29 +1,31 @@
 /**
- * KinStudy - iPad Dual Online/Offline Study Buddy AI
- * Modular Vanilla ES6 Architecture
+ * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
+ * Fixes: Infinite thinking hangs, WebGPU disposal loops, true streaming, and strict persona toggling.
  */
 
 // ============================================================================
-// 1. Constants & Storage Keys
+// 1. Configuration & Constants
 // ============================================================================
 
 const DEFAULT_PERSONA = 
-  "You are a warm, supportive, motivating, and funny older sibling/family member and study buddy. " +
+  "You are a warm, supportive, motivating older sibling and expert study buddy. " +
   "Help me master Maths, Science, and Logical Reasoning. " +
-  "Explain step-by-step with simple analogies, jokes, and clear calculations. " +
-  "Keep responses encouraging and easy to follow.";
+  "Explain step-by-step with clear calculations, intuitive everyday analogies, and light humor. " +
+  "Keep answers comprehensive, structured, and never judge mistakes.";
 
 const STORAGE_KEYS = {
-  CHATS: 'kinstudy_chats_v2',
-  ACTIVE_ID: 'kinstudy_active_id_v2',
-  API_KEY: 'kinstudy_gemini_api_key_v2',
-  PERSONA: 'kinstudy_persona_v2',
-  THEME: 'kinstudy_theme_v2',
-  MODE: 'kinstudy_mode_v2',
-  ONLINE_MODEL: 'kinstudy_online_model_v2'
+  CHATS: 'kinstudy_v3_chats',
+  ACTIVE_ID: 'kinstudy_v3_active_id',
+  API_KEY: 'kinstudy_v3_api_key',
+  PERSONA: 'kinstudy_v3_persona',
+  PERSONA_ENABLED: 'kinstudy_v3_persona_enabled',
+  THEME: 'kinstudy_v3_theme',
+  MODE: 'kinstudy_v3_mode',
+  ONLINE_MODEL: 'kinstudy_v3_online_model'
 };
 
-const OFFLINE_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+// Stable 0.5B model for iPadOS Safari memory constraints
+const OFFLINE_MODEL_ID = "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
 const WEBLLM_FALLBACK_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 
 // ============================================================================
@@ -35,59 +37,61 @@ const state = {
   activeChatId: null,
   geminiApiKey: '',
   systemPersona: DEFAULT_PERSONA,
+  personaEnabled: true,
   theme: 'dark',
   currentMode: 'online', // 'online' | 'offline'
   onlineModel: 'gemini-3.8-flash',
-  
-  // Offline Engine State
+
+  // Engine state
   webllmEngine: null,
   isModelLoading: false,
   isModelReady: false,
-  isGenerating: false, // Prevents duplicate triggers and disposed WebGPU errors
-  
-  // Knowledge Base Cache
+  isGenerating: false,
+
+  // Instant Knowledge base
   knowledgeBase: []
 };
 
 // ============================================================================
-// 3. Storage Layer
+// 3. Persistent Storage Controller
 // ============================================================================
 
 function loadPersistedState() {
   try {
-    const rawChats = localStorage.getItem(STORAGE_KEYS.CHATS);
-    state.chats = rawChats ? JSON.parse(rawChats) : [];
+    const raw = localStorage.getItem(STORAGE_KEYS.CHATS);
+    state.chats = raw ? JSON.parse(raw) : [];
   } catch (e) {
-    console.warn('Failed parsing saved chats:', e);
     state.chats = [];
   }
 
   state.activeChatId = localStorage.getItem(STORAGE_KEYS.ACTIVE_ID) || null;
   state.geminiApiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
-  
-  // Only use default persona on brand new installs; otherwise preserve user preference
+
   const savedPersona = localStorage.getItem(STORAGE_KEYS.PERSONA);
-  state.systemPersona = (savedPersona !== null) ? savedPersona : DEFAULT_PERSONA;
+  state.systemPersona = savedPersona !== null ? savedPersona : DEFAULT_PERSONA;
+
+  const savedEnabled = localStorage.getItem(STORAGE_KEYS.PERSONA_ENABLED);
+  state.personaEnabled = savedEnabled !== null ? savedEnabled === 'true' : true;
 
   state.theme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
   state.currentMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'online';
   state.onlineModel = localStorage.getItem(STORAGE_KEYS.ONLINE_MODEL) || 'gemini-3.8-flash';
 
   if (!state.chats.length) {
-    const initialSession = {
+    const welcomeSession = {
       id: 'session_' + Date.now(),
       title: 'Welcome Study Session',
       createdAt: Date.now(),
       messages: [
         {
           role: 'assistant',
-          content: "Hey! 👋 I'm your **study buddy and older sibling mentor**! What subject are we tackling today? Ask me any question in Maths, Science, or Logic, and I'll break it down with simple steps, analogies, and quick humor!",
+          content: "Hey! 👋 I'm your **study buddy and sibling mentor**! What subject are we mastering today? Throw any Maths problem, Science concept, or Logic puzzle at me!",
           timestamp: Date.now()
         }
       ]
     };
-    state.chats = [initialSession];
-    state.activeChatId = initialSession.id;
+    state.chats = [welcomeSession];
+    state.activeChatId = welcomeSession.id;
     saveChats();
   } else if (!state.activeChatId || !state.chats.some(c => c.id === state.activeChatId)) {
     state.activeChatId = state.chats[0].id;
@@ -102,6 +106,7 @@ function saveChats() {
 function saveSettings() {
   localStorage.setItem(STORAGE_KEYS.API_KEY, state.geminiApiKey);
   localStorage.setItem(STORAGE_KEYS.PERSONA, state.systemPersona);
+  localStorage.setItem(STORAGE_KEYS.PERSONA_ENABLED, String(state.personaEnabled));
   localStorage.setItem(STORAGE_KEYS.THEME, state.theme);
   localStorage.setItem(STORAGE_KEYS.MODE, state.currentMode);
   localStorage.setItem(STORAGE_KEYS.ONLINE_MODEL, state.onlineModel);
@@ -117,10 +122,9 @@ async function fetchKnowledgeBase() {
     if (res.ok) {
       const data = await res.json();
       state.knowledgeBase = data.entries || [];
-      console.log(`[KnowledgeBase] Loaded ${state.knowledgeBase.length} instant entries.`);
     }
   } catch (err) {
-    console.warn('[KnowledgeBase] Offline JSON load error:', err);
+    console.warn('[KnowledgeBase] Offline JSON not found; skipping lookup.');
   }
 }
 
@@ -139,61 +143,48 @@ function findInstantFormulaMatch(userQuery) {
 function formatFormulaAnswer(entry) {
   let answer = `### 📐 ${entry.title} (${entry.category})\n\n`;
   answer += `**Formula:**\n\`\`\`text\n${entry.formula}\n\`\`\`\n\n`;
-  answer += `**Why it works:**\n${entry.explanation}\n\n`;
-  
-  if (entry.analogy) {
-    answer += `💡 **Analogy:** ${entry.analogy}\n\n`;
-  }
-
-  if (entry.stepByStep && entry.stepByStep.length) {
-    answer += `**Step-by-step how to solve:**\n`;
-    entry.stepByStep.forEach(step => {
-      answer += `- ${step}\n`;
-    });
+  answer += `**Concept:**\n${entry.explanation}\n\n`;
+  if (entry.analogy) answer += `💡 **Everyday Analogy:** ${entry.analogy}\n\n`;
+  if (entry.stepByStep?.length) {
+    answer += `**Step-by-Step Resolution:**\n`;
+    entry.stepByStep.forEach(s => answer += `- ${s}\n`);
     answer += `\n`;
   }
-
-  if (entry.example) {
-    answer += `🎯 **Quick Example:**\n${entry.example}`;
-  }
-
+  if (entry.example) answer += `🎯 **Practice Example:**\n${entry.example}`;
   return answer;
 }
 
 // ============================================================================
-// 5. Dual Engine Controller (Gemini API vs WebLLM)
+// 5. Dual Engine Core: Online Gemini API & Offline WebLLM
 // ============================================================================
 
-async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
-  if (!apiKey || !apiKey.trim()) {
-    throw new Error('MISSING_API_KEY');
-  }
+async function callGeminiOnline(messages, onChunk) {
+  if (!state.geminiApiKey.trim()) throw new Error('MISSING_API_KEY');
 
-  const cleanKey = apiKey.trim();
   const modelsToTry = [
-    selectedModel,
+    state.onlineModel,
     'gemini-3.8-flash',
     'gemini-3.7-flash',
     'gemini-2.5-flash'
   ].filter((v, i, a) => a.indexOf(v) === i);
 
-  const contents = messages.map(m => ({
+  const cleanHistory = messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
     parts: [{ text: m.content }]
   }));
 
   const payload = {
-    contents,
+    contents: cleanHistory,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4078 // Configured limit for comprehensive answers
+      maxOutputTokens: 4078
     }
   };
 
-  // Only attach system instruction if user provided one
-  if (systemPrompt && systemPrompt.trim().length > 0) {
+  // Only apply system instruction if explicitly enabled and non-empty
+  if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
     payload.system_instruction = {
-      parts: [{ text: systemPrompt.trim() }]
+      parts: [{ text: state.systemPersona.trim() }]
     };
   }
 
@@ -201,7 +192,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
 
   for (const model of modelsToTry) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
       
       const response = await fetch(url, {
         method: 'POST',
@@ -209,52 +200,73 @@ async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        const msg = data.error?.message || `HTTP ${response.status}`;
-        if (response.status === 400 && msg.toLowerCase().includes('api key')) {
-          throw new Error('INVALID_API_KEY: ' + msg);
-        }
-        if (response.status === 404 || response.status === 503 || msg.includes('not found') || msg.includes('no longer available')) {
-          lastError = new Error(msg);
-          continue;
-        }
-        throw new Error(msg);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const msg = errorData.error?.message || `HTTP ${response.status}`;
+        if (response.status === 400 && msg.toLowerCase().includes('api key')) throw new Error('INVALID_API_KEY');
+        lastError = new Error(msg);
+        continue;
       }
 
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error('Empty reply received from Gemini.');
-      return text;
+      // Stream the response smoothly
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr || jsonStr === '[DONE]') continue;
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const textPiece = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (textPiece) {
+                fullText += textPiece;
+                onChunk(fullText);
+              }
+            } catch (e) {
+              // Ignore partial chunk parse glitches
+            }
+          }
+        }
+      }
+
+      if (fullText.trim()) return fullText;
     } catch (err) {
+      if (err.message === 'INVALID_API_KEY' || err.message === 'MISSING_API_KEY') throw err;
       lastError = err;
-      if (err.message && (err.message.includes('INVALID_API_KEY') || err.message === 'MISSING_API_KEY')) {
-        throw err;
-      }
     }
   }
 
-  throw lastError || new Error('Could not connect to Gemini API. Check your internet connection.');
+  throw lastError || new Error('Connection failed. Please check your network.');
 }
 
 async function loadOfflineModel(onProgress) {
-  if (state.webllmEngine) {
+  if (state.webllmEngine && state.isModelReady) {
     return state.webllmEngine;
   }
 
-  if (!('gpu' in navigator)) {
-    throw new Error('WebGPU is not enabled. In iPad Settings > Safari > Advanced > Feature Flags, enable WebGPU.');
+  // Ensure fresh WebGPU adapter access without stale references
+  if (!navigator.gpu) {
+    throw new Error('WebGPU is not enabled. Open iPad Settings > Safari > Advanced > Feature Flags and turn ON WebGPU.');
   }
 
   state.isModelLoading = true;
   updateOfflineBarUI();
 
   try {
-    let webllm = window.webllm;
-    if (!webllm) {
-      webllm = await import(WEBLLM_FALLBACK_CDN);
-    }
+    const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
 
+    // Create engine with memory-safe KV limits for iPad
     const engine = await webllm.CreateMLCEngine(OFFLINE_MODEL_ID, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -267,6 +279,7 @@ async function loadOfflineModel(onProgress) {
     updateOfflineBarUI();
     return engine;
   } catch (err) {
+    state.webllmEngine = null;
     state.isModelLoading = false;
     state.isModelReady = false;
     updateOfflineBarUI();
@@ -276,12 +289,12 @@ async function loadOfflineModel(onProgress) {
 
 async function unloadOfflineModel() {
   if (state.webllmEngine) {
-    console.log('[WebLLM] Unloading model to free iPad RAM...');
     try {
       await state.webllmEngine.unload();
     } catch (e) {
-      console.warn('Error unloading engine:', e);
+      console.warn('Engine release:', e);
     }
+    // Clean all state pointers so the next reload requests fresh WebGPU handles
     state.webllmEngine = null;
     state.isModelReady = false;
     state.isModelLoading = false;
@@ -289,18 +302,20 @@ async function unloadOfflineModel() {
   }
 }
 
-async function callWebLLMOffline(messages, systemPrompt) {
-  if (!state.webllmEngine) {
+async function callWebLLMOffline(messages, onChunk) {
+  if (!state.webllmEngine || !state.isModelReady) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
 
   const formatted = [];
-  if (systemPrompt && systemPrompt.trim().length > 0) {
-    formatted.push({ role: 'system', content: systemPrompt.trim() });
+
+  // Only apply system instruction if toggled ON and non-empty
+  if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
+    formatted.push({ role: 'system', content: state.systemPersona.trim() });
   }
 
-  // Preserve the last 4 turns to avoid exceeding iPad WebGPU buffers
-  const recentTurns = messages.slice(-4);
+  // Cap conversation history to the last 2 turns to eliminate the "thinking forever on 2nd message" freeze
+  const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
       role: m.role === 'user' ? 'user' : 'assistant',
@@ -308,18 +323,28 @@ async function callWebLLMOffline(messages, systemPrompt) {
     });
   }
 
-  const completion = await state.webllmEngine.chat.completions.create({
+  // True progressive token streaming for offline mode
+  const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
     messages: formatted,
     temperature: 0.6,
-    max_tokens: 2048, // Configured token limit for complete explanations
-    stream: false     // Prevents premature tensor disposal in Safari
+    max_tokens: 2048,
+    stream: true
   });
 
-  return completion.choices?.[0]?.message?.content || 'No response generated.';
+  let fullReply = '';
+  for await (const chunk of asyncChunkGenerator) {
+    const delta = chunk.choices[0]?.delta?.content || '';
+    if (delta) {
+      fullReply += delta;
+      onChunk(fullReply);
+    }
+  }
+
+  return fullReply || 'Could not generate a response. Please try again.';
 }
 
 // ============================================================================
-// 6. UI Rendering & Event Handling
+// 6. UI Renderers & Touch Controllers
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -341,7 +366,6 @@ function renderChatList() {
   if (!container) return;
 
   container.innerHTML = '';
-
   state.chats.forEach(chat => {
     const isActive = chat.id === state.activeChatId;
     const item = document.createElement('div');
@@ -355,7 +379,7 @@ function renderChatList() {
     const delBtn = document.createElement('button');
     delBtn.className = 'btn-delete-chat';
     delBtn.title = 'Delete chat';
-    delBtn.innerHTML = '🗑️';
+    delBtn.innerHTML = '✕';
     delBtn.onclick = (e) => {
       e.stopPropagation();
       deleteChat(chat.id);
@@ -373,25 +397,22 @@ function renderMessages() {
   const titleEl = document.getElementById('chat-header-title');
 
   if (!scrollArea) return;
-
-  if (titleEl) {
-    titleEl.textContent = chat ? chat.title : 'Study Buddy';
-  }
+  if (titleEl) titleEl.textContent = chat ? chat.title : 'Study Buddy';
 
   if (!chat || !chat.messages.length) {
     scrollArea.innerHTML = `
       <div class="welcome-hero">
-        <div class="welcome-avatar">🎓</div>
+        <div class="welcome-avatar">⚡</div>
         <h2>KinStudy Assistant</h2>
-        <p>Your encouraging older sibling & study companion. Ask any question in Maths, Science, or Logic!</p>
+        <p>Your instant offline & online study mentor. Ask any question in Maths, Science, or Logic!</p>
         <div class="quick-prompts-grid">
           <div class="prompt-card" onclick="window.sendPrompt('Explain the quadratic formula with pizza slices!')">
             <span class="prompt-tag">🍕 Algebra</span>
             <span class="prompt-desc">Explain quadratic formula with simple analogies</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\\'s Law and how do volts, amps, and ohms work together?')">
+          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\'s Law and how do volts, amps, and ohms work together?')">
             <span class="prompt-tag">⚡ Physics</span>
-            <span class="prompt-desc">What is Ohm's Law and water hose analogy?</span>
+            <span class="prompt-desc">Ohm's Law explained through a water hose analogy</span>
           </div>
           <div class="prompt-card" onclick="window.sendPrompt('What is the formula for photosynthesis?')">
             <span class="prompt-tag">🌱 Biology</span>
@@ -408,15 +429,14 @@ function renderMessages() {
   }
 
   scrollArea.innerHTML = '';
-
-  chat.messages.forEach((msg) => {
+  chat.messages.forEach(msg => {
     const isUser = msg.role === 'user';
     const row = document.createElement('div');
     row.className = `message-row ${isUser ? 'user' : 'assistant'}`;
 
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.textContent = isUser ? '👤' : '🤖';
+    avatar.textContent = isUser ? '👤' : '⚡';
 
     const wrapper = document.createElement('div');
     wrapper.className = 'message-content-wrapper';
@@ -426,7 +446,7 @@ function renderMessages() {
 
     const sender = document.createElement('span');
     sender.className = 'sender-name';
-    sender.textContent = isUser ? 'You' : 'Study Buddy';
+    sender.textContent = isUser ? 'You' : (state.currentMode === 'online' ? 'Gemini' : 'WebLLM Qwen');
 
     const copyBtn = document.createElement('button');
     copyBtn.className = 'btn-copy-bubble';
@@ -442,7 +462,6 @@ function renderMessages() {
 
     wrapper.appendChild(meta);
     wrapper.appendChild(body);
-
     row.appendChild(avatar);
     row.appendChild(wrapper);
     scrollArea.appendChild(row);
@@ -451,13 +470,19 @@ function renderMessages() {
   scrollArea.scrollTop = scrollArea.scrollHeight;
 }
 
-function formatMarkdown(text) {
-  if (!text) return '';
-  let escape = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+function updateStreamingBubble(text) {
+  const scrollArea = document.getElementById('messages-scroll-area');
+  const bodies = scrollArea.querySelectorAll('.message-row.assistant .message-body');
+  if (bodies.length) {
+    const lastBody = bodies[bodies.length - 1];
+    lastBody.innerHTML = formatMarkdown(text);
+    scrollArea.scrollTop = scrollArea.scrollHeight;
+  }
+}
 
+function formatMarkdown(text) {
+  if (!text) return '<span class="typing-dot">Thinking...</span>';
+  let escape = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   escape = escape.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
   escape = escape.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   escape = escape.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -465,16 +490,10 @@ function formatMarkdown(text) {
   return paras.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
 }
 
-function copyText(text, buttonElement) {
+function copyText(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
-    buttonElement.textContent = '✅ Copied!';
-    buttonElement.classList.add('copied');
-    setTimeout(() => {
-      buttonElement.textContent = '📋 Copy';
-      buttonElement.classList.remove('copied');
-    }, 1800);
-  }).catch(() => {
-    buttonElement.textContent = 'Error';
+    btn.textContent = '✅ Copied';
+    setTimeout(() => btn.textContent = '📋 Copy', 1500);
   });
 }
 
@@ -485,50 +504,49 @@ function updateOfflineBarUI() {
   const btnUnload = document.getElementById('btn-unload-model');
   const statusMsg = document.getElementById('status-msg');
   const progressWrap = document.getElementById('load-progress-bar');
-  const footerModeLabel = document.getElementById('footer-mode-label');
-  const onlineModelSelect = document.getElementById('online-model-select');
+  const footerMode = document.getElementById('footer-mode-label');
+  const onlineSelect = document.getElementById('online-model-select');
+  const modelTag = document.getElementById('current-model-tag');
 
   if (!bar) return;
 
   if (state.currentMode === 'offline') {
     bar.classList.add('active');
-    if (onlineModelSelect) onlineModelSelect.style.display = 'none';
-    if (footerModeLabel) {
-      footerModeLabel.innerHTML = '<span class="dot offline"></span> Offline Mode';
-    }
+    if (onlineSelect) onlineSelect.style.display = 'none';
+    if (footerMode) footerMode.innerHTML = '<span class="dot offline"></span> Offline WebGPU';
+    if (modelTag) modelTag.textContent = 'Qwen2.5-0.5B (Local)';
 
     if (state.isModelReady) {
-      ramBadge.textContent = 'Model in RAM';
+      ramBadge.textContent = 'Active in RAM';
       ramBadge.className = 'ram-badge ready';
-      statusMsg.textContent = 'Model is ready for offline reasoning.';
+      statusMsg.textContent = 'Ready. Zero internet needed.';
       btnLoad.style.display = 'none';
       btnUnload.style.display = 'block';
       progressWrap.style.display = 'none';
     } else if (state.isModelLoading) {
-      ramBadge.textContent = 'Loading...';
+      ramBadge.textContent = 'Compiling...';
       ramBadge.className = 'ram-badge';
       btnLoad.style.display = 'none';
       btnUnload.style.display = 'none';
       progressWrap.style.display = 'block';
     } else {
-      ramBadge.textContent = '0 MB in RAM';
+      ramBadge.textContent = 'RAM Inactive';
       ramBadge.className = 'ram-badge';
-      statusMsg.textContent = 'Zero background RAM used. Tap to initialize model.';
+      statusMsg.textContent = 'Zero background memory used. Tap to initialize.';
       btnLoad.style.display = 'block';
       btnUnload.style.display = 'none';
       progressWrap.style.display = 'none';
     }
   } else {
     bar.classList.remove('active');
-    if (onlineModelSelect) onlineModelSelect.style.display = 'block';
-    if (footerModeLabel) {
-      footerModeLabel.innerHTML = '<span class="dot online"></span> Online Gemini';
-    }
+    if (onlineSelect) onlineSelect.style.display = 'block';
+    if (footerMode) footerMode.innerHTML = '<span class="dot online"></span> Online Mode';
+    if (modelTag) modelTag.textContent = state.onlineModel;
   }
 }
 
 // ============================================================================
-// 7. User Actions & Controller Flow
+// 7. Message Sending & Controller Logic
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -544,7 +562,6 @@ async function handleSendMessage() {
   const sendBtn = document.getElementById('btn-send');
   const text = inputEl.value.trim();
 
-  // Guard against blank input or concurrent generation
   if (!text || state.isGenerating) return;
 
   const chat = getActiveChat();
@@ -554,11 +571,10 @@ async function handleSendMessage() {
   sendBtn.disabled = true;
   inputEl.disabled = true;
 
-  const userMsg = { role: 'user', content: text, timestamp: Date.now() };
-  chat.messages.push(userMsg);
-
+  // Add User Message
+  chat.messages.push({ role: 'user', content: text, timestamp: Date.now() });
   if (chat.messages.filter(m => m.role === 'user').length === 1) {
-    chat.title = text.length > 28 ? text.slice(0, 28) + '...' : text;
+    chat.title = text.length > 26 ? text.slice(0, 26) + '...' : text;
   }
 
   inputEl.value = '';
@@ -567,42 +583,49 @@ async function handleSendMessage() {
   renderChatList();
   renderMessages();
 
-  const tempMsg = { role: 'assistant', content: 'Thinking...', timestamp: Date.now() };
-  chat.messages.push(tempMsg);
+  // Insert temporary thinking message
+  const assistantMsg = { role: 'assistant', content: '', timestamp: Date.now() };
+  chat.messages.push(assistantMsg);
   renderMessages();
 
   try {
     const formulaMatch = findInstantFormulaMatch(text);
     if (formulaMatch) {
-      const answer = `<span class="instant-badge">⚡ Instant Offline Formula Match</span>\n\n` + formatFormulaAnswer(formulaMatch);
-      chat.messages[chat.messages.length - 1].content = answer;
+      const matchText = `<span class="instant-badge">⚡ Instant Formula Match</span>\n\n` + formatFormulaAnswer(formulaMatch);
+      assistantMsg.content = matchText;
+      updateStreamingBubble(matchText);
     } else if (state.currentMode === 'online') {
       const history = chat.messages.slice(0, -1);
-      const reply = await callGeminiOnline(history, state.systemPersona, state.geminiApiKey, state.onlineModel);
-      chat.messages[chat.messages.length - 1].content = reply;
+      const reply = await callGeminiOnline(history, (streamingText) => {
+        assistantMsg.content = streamingText;
+        updateStreamingBubble(streamingText);
+      });
+      assistantMsg.content = reply;
     } else {
       const history = chat.messages.slice(0, -1);
-      const reply = await callWebLLMOffline(history, state.systemPersona);
-      chat.messages[chat.messages.length - 1].content = reply;
+      const reply = await callWebLLMOffline(history, (streamingText) => {
+        assistantMsg.content = streamingText;
+        updateStreamingBubble(streamingText);
+      });
+      assistantMsg.content = reply;
     }
   } catch (err) {
     if (err.message === 'MISSING_API_KEY') {
-      chat.messages[chat.messages.length - 1].content = 
-        '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️ in the sidebar or top bar) and enter your Gemini API Key to use Online Mode.\n\n*Or switch to **Offline Mode** in the top bar dropdown!*';
+      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      chat.messages[chat.messages.length - 1].content = 
-        '⚠️ **Offline Model Not Ready**\n\nPlease tap **"Load Offline Model"** in the amber bar above to initialize WebGPU RAM.';
+      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top yellow bar to initialize WebGPU shaders.';
     } else {
-      chat.messages[chat.messages.length - 1].content = `⚠️ **Error:** ${err.message || err}`;
+      assistantMsg.content = `⚠️ **Error:** ${err.message || err}`;
     }
+    updateStreamingBubble(assistantMsg.content);
   } finally {
     state.isGenerating = false;
     sendBtn.disabled = false;
     inputEl.disabled = false;
     saveChats();
     renderMessages();
-    setTimeout(() => inputEl.focus(), 50);
+    setTimeout(() => inputEl.focus(), 60);
   }
 }
 
@@ -623,12 +646,9 @@ function createNewChat() {
 
 function deleteChat(id) {
   state.chats = state.chats.filter(c => c.id !== id);
-  if (state.activeChatId === id) {
-    state.activeChatId = state.chats[0]?.id || null;
-  }
-  if (!state.chats.length) {
-    createNewChat();
-  } else {
+  if (state.activeChatId === id) state.activeChatId = state.chats[0]?.id || null;
+  if (!state.chats.length) createNewChat();
+  else {
     saveChats();
     renderChatList();
     renderMessages();
@@ -645,13 +665,13 @@ function selectChat(id) {
 
 async function setEngineMode(mode) {
   if (mode === state.currentMode) return;
-
   state.currentMode = mode;
   saveSettings();
 
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) modeSelect.value = mode;
 
+  // Free memory immediately if leaving offline mode
   if (mode === 'online' && state.webllmEngine) {
     await unloadOfflineModel();
   }
@@ -680,8 +700,8 @@ function openModal(isOpen) {
 
   if (isOpen) {
     document.getElementById('input-api-key').value = state.geminiApiKey;
-    // Show empty string if persona was cleared, otherwise show the persona
     document.getElementById('input-persona').value = state.systemPersona;
+    document.getElementById('check-enable-persona').checked = state.personaEnabled;
     modal.classList.add('active');
   } else {
     modal.classList.remove('active');
@@ -691,7 +711,7 @@ function openModal(isOpen) {
 function exportCurrentChatToFiles() {
   const chat = getActiveChat();
   if (!chat || !chat.messages.length) {
-    alert('This study session has no notes yet!');
+    alert('This session has no messages yet!');
     return;
   }
 
@@ -702,19 +722,15 @@ function exportCurrentChatToFiles() {
   text += `==================================================\n\n`;
 
   chat.messages.forEach((m, idx) => {
-    const sender = m.role === 'assistant' ? '🤖 STUDY BUDDY' : '👤 YOU';
+    const sender = m.role === 'assistant' ? 'STUDY BUDDY' : 'YOU';
     text += `[Turn ${idx + 1}] ${sender}\n----------------------------------------\n${m.content}\n\n`;
   });
-
-  text += `==================================================\n`;
-  text += `Saved from KinStudy iPad Assistant\n`;
 
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const filename = (chat.title || 'study-session').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.txt';
   a.href = url;
-  a.download = filename;
+  a.download = (chat.title || 'study-session').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '.txt';
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -722,7 +738,7 @@ function exportCurrentChatToFiles() {
 }
 
 // ============================================================================
-// 8. Initialization & Event Listeners
+// 8. Bootstrap & Event Listeners
 // ============================================================================
 
 window.addEventListener('DOMContentLoaded', async () => {
@@ -742,6 +758,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     onlineModelSelect.onchange = (e) => {
       state.onlineModel = e.target.value;
       saveSettings();
+      updateOfflineBarUI();
     };
   }
 
@@ -786,9 +803,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   }
 
   const sendBtn = document.getElementById('btn-send');
-  if (sendBtn) {
-    sendBtn.onclick = handleSendMessage;
-  }
+  if (sendBtn) sendBtn.onclick = handleSendMessage;
 
   const newChatBtn = document.getElementById('btn-new-chat');
   if (newChatBtn) newChatBtn.onclick = createNewChat;
@@ -805,31 +820,21 @@ window.addEventListener('DOMContentLoaded', async () => {
   const themeToggle = document.getElementById('btn-theme-toggle');
   if (themeToggle) {
     themeToggle.onclick = () => {
-      const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
-      applyTheme(nextTheme);
+      applyTheme(state.theme === 'dark' ? 'light' : 'dark');
     };
   }
 
-  const exportBtn = document.getElementById('btn-export-notes');
-  if (exportBtn) exportBtn.onclick = exportCurrentChatToFiles;
-
-  const topExportBtn = document.getElementById('btn-top-export');
-  if (topExportBtn) topExportBtn.onclick = exportCurrentChatToFiles;
-
-  const settingsBtn = document.getElementById('btn-open-settings');
-  if (settingsBtn) settingsBtn.onclick = () => openModal(true);
-
-  const topSettingsBtn = document.getElementById('btn-top-settings');
-  if (topSettingsBtn) topSettingsBtn.onclick = () => openModal(true);
-
-  const modalClose = document.getElementById('btn-modal-close');
-  if (modalClose) modalClose.onclick = () => openModal(false);
+  document.getElementById('btn-export-notes')?.addEventListener('click', exportCurrentChatToFiles);
+  document.getElementById('btn-top-export')?.addEventListener('click', exportCurrentChatToFiles);
+  document.getElementById('btn-open-settings')?.addEventListener('click', () => openModal(true));
+  document.getElementById('btn-top-settings')?.addEventListener('click', () => openModal(true));
+  document.getElementById('btn-modal-close')?.addEventListener('click', () => openModal(false));
 
   const btnSaveSettings = document.getElementById('btn-save-settings');
   if (btnSaveSettings) {
     btnSaveSettings.onclick = () => {
       state.geminiApiKey = document.getElementById('input-api-key').value.trim();
-      // Saves whatever is in the box; leaving it empty keeps custom instructions off
+      state.personaEnabled = document.getElementById('check-enable-persona').checked;
       state.systemPersona = document.getElementById('input-persona').value.trim();
       saveSettings();
       openModal(false);
@@ -840,13 +845,14 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (btnResetPersona) {
     btnResetPersona.onclick = () => {
       document.getElementById('input-persona').value = DEFAULT_PERSONA;
+      document.getElementById('check-enable-persona').checked = true;
     };
   }
 
   const btnClearAll = document.getElementById('btn-clear-storage');
   if (btnClearAll) {
     btnClearAll.onclick = async () => {
-      if (confirm('Clear all chats and saved settings from iPad local storage?')) {
+      if (confirm('Clear all chats and saved settings?')) {
         await unloadOfflineModel();
         localStorage.clear();
         state.chats = [];
@@ -863,8 +869,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   updateOfflineBarUI();
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[KinStudy SW] Registered with scope:', reg.scope))
-      .catch(err => console.warn('[KinStudy SW] Registration failed:', err));
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
 });
