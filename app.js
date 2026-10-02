@@ -19,12 +19,12 @@ const STORAGE_KEYS = {
   API_KEY: 'kinstudy_gemini_api_key_v2',
   PERSONA: 'kinstudy_persona_v2',
   THEME: 'kinstudy_theme_v2',
-  MODE: 'kinstudy_mode_v2'
+  MODE: 'kinstudy_mode_v2',
+  ONLINE_MODEL: 'kinstudy_online_model_v2'
 };
 
 const OFFLINE_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
-// Pinned stable WebLLM build for WebGPU on Safari / iPadOS
-const WEBLLM_CDN_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+const WEBLLM_FALLBACK_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 
 // ============================================================================
 // 2. Application State
@@ -37,12 +37,13 @@ const state = {
   systemPersona: DEFAULT_PERSONA,
   theme: 'dark',
   currentMode: 'online', // 'online' | 'offline'
+  onlineModel: 'gemini-3.8-flash',
   
   // Offline Engine State
   webllmEngine: null,
   isModelLoading: false,
   isModelReady: false,
-  isGenerating: false, // Prevents concurrency disposal errors
+  isGenerating: false,
   
   // Knowledge Base Cache
   knowledgeBase: []
@@ -66,6 +67,7 @@ function loadPersistedState() {
   state.systemPersona = localStorage.getItem(STORAGE_KEYS.PERSONA) || DEFAULT_PERSONA;
   state.theme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
   state.currentMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'online';
+  state.onlineModel = localStorage.getItem(STORAGE_KEYS.ONLINE_MODEL) || 'gemini-3.8-flash';
 
   if (!state.chats.length) {
     const initialSession = {
@@ -98,6 +100,7 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEYS.PERSONA, state.systemPersona);
   localStorage.setItem(STORAGE_KEYS.THEME, state.theme);
   localStorage.setItem(STORAGE_KEYS.MODE, state.currentMode);
+  localStorage.setItem(STORAGE_KEYS.ONLINE_MODEL, state.onlineModel);
 }
 
 // ============================================================================
@@ -110,10 +113,10 @@ async function fetchKnowledgeBase() {
     if (res.ok) {
       const data = await res.json();
       state.knowledgeBase = data.entries || [];
-      console.log(`[KnowledgeBase] Loaded ${state.knowledgeBase.length} instant offline entries.`);
+      console.log(`[KnowledgeBase] Loaded ${state.knowledgeBase.length} instant entries.`);
     }
   } catch (err) {
-    console.warn('[KnowledgeBase] Offline JSON lookup load error:', err);
+    console.warn('[KnowledgeBase] Offline JSON load error:', err);
   }
 }
 
@@ -122,12 +125,9 @@ function findInstantFormulaMatch(userQuery) {
   const q = userQuery.toLowerCase().trim();
 
   for (const entry of state.knowledgeBase) {
-    const matchKeyword = entry.keywords.some(k => q.includes(k.toLowerCase()));
-    const matchTitle = q.includes(entry.title.toLowerCase());
-    
-    if (matchKeyword || matchTitle) {
-      return entry;
-    }
+    const matchKeyword = entry.keywords && entry.keywords.some(k => q.includes(k.toLowerCase()));
+    const matchTitle = entry.title && q.includes(entry.title.toLowerCase());
+    if (matchKeyword || matchTitle) return entry;
   }
   return null;
 }
@@ -160,13 +160,18 @@ function formatFormulaAnswer(entry) {
 // 5. Dual Engine Controller (Gemini API vs WebLLM)
 // ============================================================================
 
-async function callGeminiOnline(messages, systemPrompt, apiKey) {
+async function callGeminiOnline(messages, systemPrompt, apiKey, selectedModel) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error('MISSING_API_KEY');
   }
 
   const cleanKey = apiKey.trim();
-  const models = ['gemini-1.5-flash', 'gemini-2.0-flash'];
+  const modelsToTry = [
+    selectedModel,
+    'gemini-3.8-flash',
+    'gemini-3.7-flash',
+    'gemini-2.5-flash'
+  ].filter((v, i, a) => a.indexOf(v) === i);
 
   const contents = messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -177,7 +182,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 1024
+      maxOutputTokens: 2048
     }
   };
 
@@ -189,7 +194,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
 
   let lastError = null;
 
-  for (const model of models) {
+  for (const model of modelsToTry) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
       
@@ -206,7 +211,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
         if (response.status === 400 && msg.toLowerCase().includes('api key')) {
           throw new Error('INVALID_API_KEY: ' + msg);
         }
-        if (response.status === 404 || response.status === 503 || msg.includes('not found')) {
+        if (response.status === 404 || response.status === 503 || msg.includes('not found') || msg.includes('no longer available')) {
           lastError = new Error(msg);
           continue;
         }
@@ -240,9 +245,12 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
-    const { CreateMLCEngine } = await import(WEBLLM_CDN_URL);
+    let webllm = window.webllm;
+    if (!webllm) {
+      webllm = await import(WEBLLM_FALLBACK_CDN);
+    }
 
-    const engine = await CreateMLCEngine(OFFLINE_MODEL_ID, {
+    const engine = await webllm.CreateMLCEngine(OFFLINE_MODEL_ID, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
       }
@@ -263,7 +271,7 @@ async function loadOfflineModel(onProgress) {
 
 async function unloadOfflineModel() {
   if (state.webllmEngine) {
-    console.log('[WebLLM] Unloading Qwen2.5-1.5B to free iPad RAM...');
+    console.log('[WebLLM] Unloading model to free iPad RAM...');
     try {
       await state.webllmEngine.unload();
     } catch (e) {
@@ -286,7 +294,7 @@ async function callWebLLMOffline(messages, systemPrompt) {
     formatted.push({ role: 'system', content: systemPrompt.trim() });
   }
 
-  // Trim to recent 4 turns to avoid WebGPU buffer overflow
+  // Keep last 4 turns to avoid exceeding iPad WebGPU buffers
   const recentTurns = messages.slice(-4);
   for (const m of recentTurns) {
     formatted.push({
@@ -298,7 +306,7 @@ async function callWebLLMOffline(messages, systemPrompt) {
   const completion = await state.webllmEngine.chat.completions.create({
     messages: formatted,
     temperature: 0.6,
-    max_tokens: 350,
+    max_tokens: 450,
     stream: false // Disables streaming to avoid disposed tensor context bug
   });
 
@@ -473,11 +481,13 @@ function updateOfflineBarUI() {
   const statusMsg = document.getElementById('status-msg');
   const progressWrap = document.getElementById('load-progress-bar');
   const footerModeLabel = document.getElementById('footer-mode-label');
+  const onlineModelSelect = document.getElementById('online-model-select');
 
   if (!bar) return;
 
   if (state.currentMode === 'offline') {
     bar.classList.add('active');
+    if (onlineModelSelect) onlineModelSelect.style.display = 'none';
     if (footerModeLabel) {
       footerModeLabel.innerHTML = '<span class="dot offline"></span> Offline Mode';
     }
@@ -485,7 +495,7 @@ function updateOfflineBarUI() {
     if (state.isModelReady) {
       ramBadge.textContent = 'Model in RAM';
       ramBadge.className = 'ram-badge ready';
-      statusMsg.textContent = 'Qwen2.5-1.5B is ready for offline reasoning.';
+      statusMsg.textContent = 'Model is ready for offline reasoning.';
       btnLoad.style.display = 'none';
       btnUnload.style.display = 'block';
       progressWrap.style.display = 'none';
@@ -498,13 +508,14 @@ function updateOfflineBarUI() {
     } else {
       ramBadge.textContent = '0 MB in RAM';
       ramBadge.className = 'ram-badge';
-      statusMsg.textContent = 'Zero background RAM used. Tap to initialize Qwen2.5-1.5B.';
+      statusMsg.textContent = 'Zero background RAM used. Tap to initialize model.';
       btnLoad.style.display = 'block';
       btnUnload.style.display = 'none';
       progressWrap.style.display = 'none';
     }
   } else {
     bar.classList.remove('active');
+    if (onlineModelSelect) onlineModelSelect.style.display = 'block';
     if (footerModeLabel) {
       footerModeLabel.innerHTML = '<span class="dot online"></span> Online Gemini';
     }
@@ -528,7 +539,6 @@ async function handleSendMessage() {
   const sendBtn = document.getElementById('btn-send');
   const text = inputEl.value.trim();
 
-  // Guard against blank input or concurrent generation
   if (!text || state.isGenerating) return;
 
   const chat = getActiveChat();
@@ -538,7 +548,6 @@ async function handleSendMessage() {
   sendBtn.disabled = true;
   inputEl.disabled = true;
 
-  // Append user message
   const userMsg = { role: 'user', content: text, timestamp: Date.now() };
   chat.messages.push(userMsg);
 
@@ -552,7 +561,6 @@ async function handleSendMessage() {
   renderChatList();
   renderMessages();
 
-  // Add temporary assistant thinking bubble
   const tempMsg = { role: 'assistant', content: 'Thinking...', timestamp: Date.now() };
   chat.messages.push(tempMsg);
   renderMessages();
@@ -564,7 +572,7 @@ async function handleSendMessage() {
       chat.messages[chat.messages.length - 1].content = answer;
     } else if (state.currentMode === 'online') {
       const history = chat.messages.slice(0, -1);
-      const reply = await callGeminiOnline(history, state.systemPersona, state.geminiApiKey);
+      const reply = await callGeminiOnline(history, state.systemPersona, state.geminiApiKey, state.onlineModel);
       chat.messages[chat.messages.length - 1].content = reply;
     } else {
       const history = chat.messages.slice(0, -1);
@@ -578,7 +586,7 @@ async function handleSendMessage() {
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
       chat.messages[chat.messages.length - 1].content = 
-        '⚠️ **Offline Model Not Ready**\n\nPlease tap **"Load Offline Model"** in the amber bar above to compile shaders and initialize Qwen2.5-1.5B into your iPad WebGPU RAM.';
+        '⚠️ **Offline Model Not Ready**\n\nPlease tap **"Load Offline Model"** in the amber bar above to initialize WebGPU RAM.';
     } else {
       chat.messages[chat.messages.length - 1].content = `⚠️ **Error:** ${err.message || err}`;
     }
@@ -719,6 +727,15 @@ window.addEventListener('DOMContentLoaded', async () => {
   if (modeSelect) {
     modeSelect.value = state.currentMode;
     modeSelect.onchange = (e) => setEngineMode(e.target.value);
+  }
+
+  const onlineModelSelect = document.getElementById('online-model-select');
+  if (onlineModelSelect) {
+    onlineModelSelect.value = state.onlineModel;
+    onlineModelSelect.onchange = (e) => {
+      state.onlineModel = e.target.value;
+      saveSettings();
+    };
   }
 
   const btnLoad = document.getElementById('btn-load-model');
