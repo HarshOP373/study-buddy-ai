@@ -994,3 +994,49 @@ html, body {
   font-weight: 700;
   cursor: pointer;
 }
+/* Stop Generation Floating Button */
+.stop-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 0.4rem 0;
+  position: absolute;
+  bottom: 80px;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.btn-stop {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: 20px;
+  padding: 0.45rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: all 0.15s ease;
+}
+
+.btn-stop:hover {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--status-danger);
+  color: var(--status-danger);
+}
+
+.btn-stop:active {
+  transform: scale(0.96);
+}
+
+.stop-icon {
+  font-size: 0.65rem;
+  color: var(--status-danger);
+}
