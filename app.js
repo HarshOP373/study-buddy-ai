@@ -23,7 +23,8 @@ const STORAGE_KEYS = {
 };
 
 const OFFLINE_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
-const WEBLLM_CDN_URL = "https://esm.run/@mlc-ai/web-llm";
+// Pinned stable WebLLM build for WebGPU on Safari / iPadOS
+const WEBLLM_CDN_URL = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 
 // ============================================================================
 // 2. Application State
@@ -41,6 +42,7 @@ const state = {
   webllmEngine: null,
   isModelLoading: false,
   isModelReady: false,
+  isGenerating: false, // Prevents concurrency disposal errors
   
   // Knowledge Base Cache
   knowledgeBase: []
@@ -65,7 +67,6 @@ function loadPersistedState() {
   state.theme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
   state.currentMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'online';
 
-  // Seed default chat if none exist
   if (!state.chats.length) {
     const initialSession = {
       id: 'session_' + Date.now(),
@@ -121,7 +122,6 @@ function findInstantFormulaMatch(userQuery) {
   const q = userQuery.toLowerCase().trim();
 
   for (const entry of state.knowledgeBase) {
-    // Check keywords or title match
     const matchKeyword = entry.keywords.some(k => q.includes(k.toLowerCase()));
     const matchTitle = q.includes(entry.title.toLowerCase());
     
@@ -160,24 +160,13 @@ function formatFormulaAnswer(entry) {
 // 5. Dual Engine Controller (Gemini API vs WebLLM)
 // ============================================================================
 
-/**
- * Online Mode: Direct fetch() to Google Gemini API
- * Zero iPad RAM overhead.
- */
 async function callGeminiOnline(messages, systemPrompt, apiKey) {
   if (!apiKey || !apiKey.trim()) {
     throw new Error('MISSING_API_KEY');
   }
 
   const cleanKey = apiKey.trim();
-
-  // Model hierarchy: Primary gemini-1.5-flash / gemini-3.7-flash with graceful fallback
-  const models = [
-    'gemini-1.5-flash',
-    'gemini-3.7-flash',
-    'gemini-2.5-flash',
-    'gemini-flash-latest'
-  ];
+  const models = ['gemini-1.5-flash', 'gemini-2.0-flash'];
 
   const contents = messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'model',
@@ -188,7 +177,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 2048
+      maxOutputTokens: 1024
     }
   };
 
@@ -217,8 +206,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
         if (response.status === 400 && msg.toLowerCase().includes('api key')) {
           throw new Error('INVALID_API_KEY: ' + msg);
         }
-        // Try fallback model on 404 or 503
-        if (response.status === 404 || response.status === 503 || msg.includes('not found') || msg.includes('demand')) {
+        if (response.status === 404 || response.status === 503 || msg.includes('not found')) {
           lastError = new Error(msg);
           continue;
         }
@@ -226,10 +214,7 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
       }
 
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) {
-        throw new Error('Empty reply received from Gemini.');
-      }
-
+      if (!text) throw new Error('Empty reply received from Gemini.');
       return text;
     } catch (err) {
       lastError = err;
@@ -242,10 +227,6 @@ async function callGeminiOnline(messages, systemPrompt, apiKey) {
   throw lastError || new Error('Could not connect to Gemini API. Check your internet connection.');
 }
 
-/**
- * Offline Mode: Dynamic WebLLM Engine
- * Loaded only on user request to prevent iPad lag and memory pressure.
- */
 async function loadOfflineModel(onProgress) {
   if (state.webllmEngine) {
     return state.webllmEngine;
@@ -305,17 +286,20 @@ async function callWebLLMOffline(messages, systemPrompt) {
     formatted.push({ role: 'system', content: systemPrompt.trim() });
   }
 
-  for (const m of messages) {
+  // Trim to recent 4 turns to avoid WebGPU buffer overflow
+  const recentTurns = messages.slice(-4);
+  for (const m of recentTurns) {
     formatted.push({
       role: m.role === 'user' ? 'user' : 'assistant',
-      content: m.content
+      content: String(m.content || '')
     });
   }
 
   const completion = await state.webllmEngine.chat.completions.create({
     messages: formatted,
-    temperature: 0.7,
-    max_tokens: 1536
+    temperature: 0.6,
+    max_tokens: 350,
+    stream: false // Disables streaming to avoid disposed tensor context bug
   });
 
   return completion.choices?.[0]?.message?.content || 'No response generated.';
@@ -392,7 +376,7 @@ function renderMessages() {
             <span class="prompt-tag">🍕 Algebra</span>
             <span class="prompt-desc">Explain quadratic formula with simple analogies</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\'s Law and how do volts, amps, and ohms work together?')">
+          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\\'s Law and how do volts, amps, and ohms work together?')">
             <span class="prompt-tag">⚡ Physics</span>
             <span class="prompt-desc">What is Ohm's Law and water hose analogy?</span>
           </div>
@@ -412,7 +396,7 @@ function renderMessages() {
 
   scrollArea.innerHTML = '';
 
-  chat.messages.forEach((msg, idx) => {
+  chat.messages.forEach((msg) => {
     const isUser = msg.role === 'user';
     const row = document.createElement('div');
     row.className = `message-row ${isUser ? 'user' : 'assistant'}`;
@@ -441,8 +425,6 @@ function renderMessages() {
 
     const body = document.createElement('div');
     body.className = 'message-body';
-
-    // Simple markdown-style line break & code block rendering
     body.innerHTML = formatMarkdown(msg.content);
 
     wrapper.appendChild(meta);
@@ -463,13 +445,9 @@ function formatMarkdown(text) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 
-  // Code blocks ``` ... ```
   escape = escape.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
-  // Bold **...**
   escape = escape.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  // Italic *...*
   escape = escape.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  // Newlines to <br> or paragraphs
   const paras = escape.split(/\n\n+/);
   return paras.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
 }
@@ -550,16 +528,20 @@ async function handleSendMessage() {
   const sendBtn = document.getElementById('btn-send');
   const text = inputEl.value.trim();
 
-  if (!text) return;
+  // Guard against blank input or concurrent generation
+  if (!text || state.isGenerating) return;
 
   const chat = getActiveChat();
   if (!chat) return;
+
+  state.isGenerating = true;
+  sendBtn.disabled = true;
+  inputEl.disabled = true;
 
   // Append user message
   const userMsg = { role: 'user', content: text, timestamp: Date.now() };
   chat.messages.push(userMsg);
 
-  // Auto-set title from first user message
   if (chat.messages.filter(m => m.role === 'user').length === 1) {
     chat.title = text.length > 28 ? text.slice(0, 28) + '...' : text;
   }
@@ -575,22 +557,16 @@ async function handleSendMessage() {
   chat.messages.push(tempMsg);
   renderMessages();
 
-  sendBtn.disabled = true;
-
   try {
-    // 1. Instant Offline Knowledge Base Lookup (Feature Requirement 3)
     const formulaMatch = findInstantFormulaMatch(text);
     if (formulaMatch) {
-      console.log('[InstantLookup] Matched formula:', formulaMatch.title);
       const answer = `<span class="instant-badge">⚡ Instant Offline Formula Match</span>\n\n` + formatFormulaAnswer(formulaMatch);
       chat.messages[chat.messages.length - 1].content = answer;
     } else if (state.currentMode === 'online') {
-      // 2. Online Mode: Gemini API fetch
       const history = chat.messages.slice(0, -1);
       const reply = await callGeminiOnline(history, state.systemPersona, state.geminiApiKey);
       chat.messages[chat.messages.length - 1].content = reply;
     } else {
-      // 3. Offline Mode: WebLLM on-device
       const history = chat.messages.slice(0, -1);
       const reply = await callWebLLMOffline(history, state.systemPersona);
       chat.messages[chat.messages.length - 1].content = reply;
@@ -607,9 +583,12 @@ async function handleSendMessage() {
       chat.messages[chat.messages.length - 1].content = `⚠️ **Error:** ${err.message || err}`;
     }
   } finally {
+    state.isGenerating = false;
     sendBtn.disabled = false;
+    inputEl.disabled = false;
     saveChats();
     renderMessages();
+    setTimeout(() => inputEl.focus(), 50);
   }
 }
 
@@ -659,8 +638,6 @@ async function setEngineMode(mode) {
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) modeSelect.value = mode;
 
-  // Lag Prevention Requirement:
-  // When switching to Online mode, execute engine.unload() to free iPad RAM immediately.
   if (mode === 'online' && state.webllmEngine) {
     await unloadOfflineModel();
   }
@@ -736,18 +713,14 @@ function exportCurrentChatToFiles() {
 window.addEventListener('DOMContentLoaded', async () => {
   loadPersistedState();
   applyTheme(state.theme);
-
-  // Fetch offline knowledge base JSON
   await fetchKnowledgeBase();
 
-  // Mode select dropdown
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) {
     modeSelect.value = state.currentMode;
     modeSelect.onchange = (e) => setEngineMode(e.target.value);
   }
 
-  // Load offline model button
   const btnLoad = document.getElementById('btn-load-model');
   const fillBar = document.getElementById('load-progress-fill');
   const statusMsg = document.getElementById('status-msg');
@@ -773,7 +746,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  // Input auto-expand & send handling
   const inputEl = document.getElementById('chat-input');
   if (inputEl) {
     inputEl.oninput = () => {
@@ -794,7 +766,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     sendBtn.onclick = handleSendMessage;
   }
 
-  // Sidebar Controls
   const newChatBtn = document.getElementById('btn-new-chat');
   if (newChatBtn) newChatBtn.onclick = createNewChat;
 
@@ -821,7 +792,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   const topExportBtn = document.getElementById('btn-top-export');
   if (topExportBtn) topExportBtn.onclick = exportCurrentChatToFiles;
 
-  // Settings Modal Controls
   const settingsBtn = document.getElementById('btn-open-settings');
   if (settingsBtn) settingsBtn.onclick = () => openModal(true);
 
@@ -863,12 +833,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     };
   }
 
-  // Render initial UI
   renderChatList();
   renderMessages();
   updateOfflineBarUI();
 
-  // Register Companion Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then(reg => console.log('[KinStudy SW] Registered with scope:', reg.scope))
