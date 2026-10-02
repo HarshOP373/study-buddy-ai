@@ -144,4 +144,12 @@ UI.send.onclick = async () => {
   }
 };
 
+// Register the Service Worker for 100% Offline PWA Support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => console.log('Service Worker registered. Ready for offline use.'))
+      .catch((err) => console.error('Service Worker registration failed:', err));
+  });
+}
 /* Keep your existing resizeImageToSafeResolution() and extractPDFText() handlers from previous code here for file inputs */
