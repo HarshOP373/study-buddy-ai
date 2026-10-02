@@ -3,102 +3,71 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>KinStudy - AI Olympiad & Document Engine</title>
+  <title>KinStudy Offline</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Manifest required to install on iPad Home Screen for true offline -->
+  <link rel="manifest" href="manifest.json" />
 
-  <!-- PDF.js Engine for Document Processing -->
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-
-  <!-- Transformers.js v3 for WebGPU SmolVLM-2.2B Execution -->
-  <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.3.0';
-    env.allowLocalModels = false;
-    window.HFPipeline = pipeline;
-  </script>
 </head>
 <body>
   <div id="app">
-    <!-- Top Navigation Bar -->
+    <!-- Top Navigation with 3 Engine Buttons -->
     <header class="top-nav">
-      <div class="brand">
-        <span class="logo-icon">📚</span>
-        <span class="logo-title">KinStudy</span>
-      </div>
-
+      <div class="brand">📚 KinStudy</div>
       <div class="nav-controls">
         <div class="toggle-group">
-          <button id="mode-online-btn" class="toggle-pill active">⚡ Online</button>
-          <button id="mode-offline-btn" class="toggle-pill">📴 Offline</button>
+          <button id="engine-qwen" class="toggle-pill" title="Code & Text Expert">🧠 Qwen</button>
+          <button id="engine-smol" class="toggle-pill" title="Vision & Diagrams">👁️ SmolVLM</button>
+          <button id="engine-gemini" class="toggle-pill active" title="Cloud API">⚡ Gemini</button>
         </div>
-        <div id="engine-status-badge" class="status-pill ready">Ready</div>
+        <div id="status-badge" class="status-pill ready">Cloud Active</div>
       </div>
     </header>
 
-    <!-- Chat Messages Stream Area -->
     <main id="chat-scroller" class="chat-container">
       <div id="messages-list" class="messages-list">
         <div class="message-row assistant">
-          <div class="msg-bubble">
-            <p>Ready. Snap an Olympiad diagram, drop a textbook PDF, or upload code/text notes to begin.</p>
-          </div>
+          <div class="msg-bubble">Ready. Select your engine above. SmolVLM can read images and chat normally; Qwen handles pure text/code.</div>
         </div>
       </div>
     </main>
 
     <!-- Bottom Input Area -->
     <footer class="input-dock">
-      <!-- Staged Upload Pill (Shown when file is chosen) -->
+      <!-- File Staging Bar -->
       <div id="staged-attachment-bar" class="staged-bar hidden">
         <div class="staged-pill">
-          <img id="staged-thumb" class="staged-thumb" alt="Thumbnail" />
+          <img id="staged-thumb" class="staged-thumb" />
           <div class="staged-meta">
             <span id="staged-filename" class="staged-filename">file.png</span>
             <span id="staged-filesize" class="staged-filesize">0 KB</span>
           </div>
-          <button id="staged-remove-btn" class="staged-remove" title="Remove attachment">✕</button>
+          <button id="staged-remove-btn" class="staged-remove">✕</button>
         </div>
       </div>
 
-      <!-- Action Controls & Textarea -->
       <div class="input-row">
         <div class="dock-actions">
-          <label for="file-upload-input" class="dock-btn" title="Attach file or photo">
-            📎
-          </label>
-          <!-- Multi-format upload support -->
-          <input 
-            type="file" 
-            id="file-upload-input" 
-            accept="image/*,application/pdf,.txt,.md,.py,.js,.html,.css,.json,.csv" 
-            style="display: none;" 
-          />
-
-          <!-- Manual Resolution Dropdown -->
-          <select id="resolution-select" class="resolution-dropdown" title="Select Image Processing Quality">
-            <option value="480p">⚡ 480p</option>
-            <option value="720p" selected>🎯 720p</option>
-            <option value="1080p">🔍 1080p</option>
+          <label for="file-upload-input" class="dock-btn">📎</label>
+          <input type="file" id="file-upload-input" accept="image/*,application/pdf,.txt,.js,.py" style="display: none;" />
+          <select id="resolution-select" class="resolution-dropdown">
+            <option value="480p">480p</option>
+            <option value="720p" selected>720p</option>
+            <option value="1080p">1080p</option>
           </select>
         </div>
-
-        <textarea
-          id="chat-textarea"
-          rows="1"
-          placeholder="Ask a question, analyze a diagram, or solve Olympiad homework..."
-        ></textarea>
-
-        <button id="send-btn" class="send-btn" title="Send">
-          ➔
-        </button>
+        <textarea id="chat-textarea" rows="1" placeholder="Type a message or upload a file..."></textarea>
+        <button id="send-btn" class="send-btn">➔</button>
       </div>
     </footer>
   </div>
 
-  <!-- Tap-to-View Fullscreen Preview Modal -->
+  <!-- Fullscreen File Modal -->
   <div id="file-preview-modal" class="modal-overlay hidden" onclick="window.closeModal()">
     <div class="modal-card" onclick="event.stopPropagation()">
       <div class="modal-header">
-        <span id="modal-file-title" class="modal-title">file_preview</span>
+        <span id="modal-file-title" class="modal-title">preview</span>
         <button class="modal-close" onclick="window.closeModal()">✕</button>
       </div>
       <div class="modal-body" id="modal-file-body"></div>
@@ -106,6 +75,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
