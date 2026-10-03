@@ -25,8 +25,6 @@ const STORAGE_KEYS = {
   OFFLINE_MODEL: 'kinstudy_v3_offline_model'
 };
 
-const WEBLLM_FALLBACK_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
-
 // ============================================================================
 // 2. Application State
 // ============================================================================
@@ -118,7 +116,7 @@ function saveSettings() {
 }
 
 // ============================================================================
-// 4. Safe Knowledge Base Loader & Matcher (Will never crash if JSON is missing)
+// 4. Safe Knowledge Base Loader & Context Matcher
 // ============================================================================
 
 async function fetchKnowledgeBase() {
@@ -283,9 +281,14 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
-    const webllm = window.webllm;
+    let webllm = window.webllm;
     if (!webllm) {
-      throw new Error('WebLLM library is not ready yet. Please check your internet connection and reload once.');
+      const module = await import("https://esm.run/@mlc-ai/web-llm@0.2.78");
+      webllm = module.default || module;
+    }
+
+    if (!webllm || !webllm.CreateMLCEngine) {
+      throw new Error('WebLLM library is still initializing. Ensure you are connected to Wi-Fi and refresh once.');
     }
 
     const engine = await webllm.CreateMLCEngine(targetModel, {
@@ -721,7 +724,7 @@ async function handleSendMessage() {
     }
   } catch (err) {
     if (err.name === 'AbortError') {
-      // Stopped normally by user
+      // Stopped cleanly by user
     } else if (err.message === 'MISSING_API_KEY') {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key.';
       openModal(true);
