@@ -19,9 +19,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 
-  <!-- Preload WebLLM for offline mode -->
-  <!-- Preload WebLLM for offline mode -->
-  <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js"></script>
+  <!-- Preload WebLLM IIFE for Safari & iPad -->
+  <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/web-llm.iife.min.js"></script>
 </head>
 <body>
 
@@ -140,7 +139,7 @@
       <!-- Messages Stream -->
       <div id="messages-scroll-area"></div>
 
-      <!-- Stop Generation Button (Appears during generation) -->
+      <!-- Stop Generation Button -->
       <div id="stop-generation-container" class="stop-container" style="display:none;">
         <button id="btn-stop-generating" class="btn-stop" type="button">
           <span class="stop-icon">■</span>
