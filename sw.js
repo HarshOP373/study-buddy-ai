@@ -1,12 +1,11 @@
-const CACHE_NAME = 'study-buddy-cache-v10';
+const CACHE_NAME = 'study-buddy-cache-v11';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json',
-  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/web-llm.iife.min.js'
+  './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
@@ -32,11 +31,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Allow Hugging Face models, large files, and Google APIs to bypass service worker caching
+  // Allow Hugging Face models, large files, CDN packages, and Google APIs to bypass service worker caching
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
-    url.hostname.includes('googleapis.com')
+    url.hostname.includes('googleapis.com') ||
+    url.hostname.includes('esm.run') ||
+    url.hostname.includes('jsdelivr.net')
   ) {
     return;
   }
