@@ -1,77 +1,132 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>KinStudy Offline</title>
-  <link rel="stylesheet" href="style.css" />
-  <!-- Manifest required to install on iPad Home Screen for true offline -->
-  <link rel="manifest" href="manifest.json" />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>KinStudy AI</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  
+  <!-- Libraries for Markdown, Code Highlighting, and PDFs -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 </head>
-<body>
+<body data-theme="dark">
   <div id="app">
-    <!-- Top Navigation with 3 Engine Buttons -->
-    <header class="top-nav">
-      <div class="brand">📚 KinStudy</div>
-      <div class="nav-controls">
-        <div class="toggle-group">
-          <button id="engine-qwen" class="toggle-pill" title="Code & Text Expert">🧠 Qwen</button>
-          <button id="engine-smol" class="toggle-pill" title="Vision & Diagrams">👁️ SmolVLM</button>
-          <button id="engine-gemini" class="toggle-pill active" title="Cloud API">⚡ Gemini</button>
-        </div>
-        <div id="status-badge" class="status-pill ready">Cloud Active</div>
+    
+    <!-- Sidebar: Chat History & Settings -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <h2>📚 KinStudy</h2>
+        <button id="new-chat-btn" class="btn-primary">+ New Chat</button>
       </div>
-    </header>
-
-    <main id="chat-scroller" class="chat-container">
-      <div id="messages-list" class="messages-list">
-        <div class="message-row assistant">
-          <div class="msg-bubble">Ready. Select your engine above. SmolVLM can read images and chat normally; Qwen handles pure text/code.</div>
-        </div>
+      <div id="chat-history-list" class="chat-list">
+        <!-- Chat history buttons appear here -->
       </div>
-    </main>
-
-    <!-- Bottom Input Area -->
-    <footer class="input-dock">
-      <!-- File Staging Bar -->
-      <div id="staged-attachment-bar" class="staged-bar hidden">
-        <div class="staged-pill">
-          <img id="staged-thumb" class="staged-thumb" />
-          <div class="staged-meta">
-            <span id="staged-filename" class="staged-filename">file.png</span>
-            <span id="staged-filesize" class="staged-filesize">0 KB</span>
-          </div>
-          <button id="staged-remove-btn" class="staged-remove">✕</button>
-        </div>
+      <div class="sidebar-footer">
+        <button id="theme-toggle-btn" class="sidebar-btn">🌓 Toggle Theme</button>
+        <button id="settings-btn" class="sidebar-btn">⚙️ Settings</button>
       </div>
+    </aside>
 
-      <div class="input-row">
-        <div class="dock-actions">
-          <label for="file-upload-input" class="dock-btn">📎</label>
-          <input type="file" id="file-upload-input" accept="image/*,application/pdf,.txt,.js,.py" style="display: none;" />
-          <select id="resolution-select" class="resolution-dropdown">
-            <option value="480p">480p</option>
-            <option value="720p" selected>720p</option>
-            <option value="1080p">1080p</option>
+    <!-- Main Chat Interface -->
+    <main class="main-content">
+      
+      <!-- Top Bar: Engine Controls -->
+      <header class="top-nav">
+        <div class="nav-left">
+          <button id="mobile-menu-btn" class="icon-btn">☰</button>
+          <select id="model-select" class="model-dropdown">
+            <optgroup label="📴 Offline (On-Device WebGPU)">
+              <option value="offline-qwen-0.5b">🧠 Qwen 2.5 (0.5B)</option>
+              <option value="offline-qwen-1.5b">🧠 Qwen 2.5 Instruct (1.5B)</option>
+              <option value="offline-qwen-coder">💻 Qwen 2.5 Coder (1.5B)</option>
+              <option value="offline-smolvlm">👁️ SmolVLM 2.2B (Vision+Files)</option>
+            </optgroup>
+            <optgroup label="⚡ Online (Cloud Gemini 3.0)">
+              <option value="online-gemini-3.0-flash" selected>⚡ Gemini 3.0 Flash</option>
+              <option value="online-gemini-3.0-pro">🧠 Gemini 3.0 Pro</option>
+              <option value="online-gemini-3.0-flash-thinking">💭 Gemini 3.0 Flash Thinking</option>
+            </optgroup>
           </select>
         </div>
-        <textarea id="chat-textarea" rows="1" placeholder="Type a message or upload a file..."></textarea>
-        <button id="send-btn" class="send-btn">➔</button>
+        
+        <div class="nav-right">
+          <!-- These buttons only appear for offline models -->
+          <button id="load-engine-btn" class="btn-secondary hidden">⚡ Load Engine</button>
+          <button id="free-ram-btn" class="btn-danger hidden">🧹 Free RAM</button>
+          
+          <div class="status-container">
+            <span id="status-badge" class="status-pill">Cloud Mode</span>
+            <span id="token-counter" class="token-pill">0 Tokens</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Chat Log -->
+      <div id="chat-scroller" class="chat-container">
+        <div id="messages-list" class="messages-list"></div>
       </div>
-    </footer>
+
+      <!-- Input Dock -->
+      <footer class="input-dock">
+        <!-- Staged File Status -->
+        <div id="staged-attachment-bar" class="staged-bar hidden">
+          <div class="staged-pill">
+            <span id="staged-filename" class="staged-filename">file</span>
+            <button id="staged-remove-btn" class="staged-remove">✕</button>
+          </div>
+        </div>
+
+        <div class="input-row">
+          <div class="dock-actions">
+            <!-- Image Button (Hidden for Qwen) -->
+            <label id="btn-image-upload" for="image-upload-input" class="icon-btn" title="Attach Image">🖼️</label>
+            <input type="file" id="image-upload-input" accept="image/*" style="display: none;" />
+            
+            <!-- File/PDF Button (Available for all) -->
+            <label id="btn-file-upload" for="file-upload-input" class="icon-btn" title="Attach PDF or Text">📄</label>
+            <input type="file" id="file-upload-input" accept="application/pdf,.txt,.js,.py,.html,.css" style="display: none;" />
+
+            <!-- Resolution Selector for Images -->
+            <select id="resolution-select" class="resolution-dropdown">
+              <option value="480p">480p</option>
+              <option value="720p" selected>720p</option>
+              <option value="1080p">1080p</option>
+            </select>
+          </div>
+          
+          <textarea id="chat-textarea" rows="1" placeholder="Type a message or upload a file..."></textarea>
+          <button id="send-btn" class="send-btn">➔</button>
+        </div>
+      </footer>
+    </main>
   </div>
 
-  <!-- Fullscreen File Modal -->
-  <div id="file-preview-modal" class="modal-overlay hidden" onclick="window.closeModal()">
-    <div class="modal-card" onclick="event.stopPropagation()">
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-overlay hidden">
+    <div class="modal-card">
       <div class="modal-header">
-        <span id="modal-file-title" class="modal-title">preview</span>
-        <button class="modal-close" onclick="window.closeModal()">✕</button>
+        <h3>⚙️ Settings</h3>
+        <button id="close-settings-btn" class="icon-btn">✕</button>
       </div>
-      <div class="modal-body" id="modal-file-body"></div>
-      <div class="modal-footer" id="modal-file-meta"></div>
+      <div class="modal-body">
+        <label for="gemini-key-input">Gemini 3.0 API Key</label>
+        <input type="password" id="gemini-key-input" placeholder="AIzaSy..." class="text-input" />
+        
+        <div class="toggle-row">
+          <label for="custom-instruction-toggle">Enable Custom Instructions</label>
+          <input type="checkbox" id="custom-instruction-toggle" />
+        </div>
+        
+        <label for="custom-instruction-input">Tutor Personality / System Prompt</label>
+        <textarea id="custom-instruction-input" class="text-input" rows="4" placeholder="e.g., Act as a Class 8 Olympiad Math tutor..."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="save-settings-btn" class="btn-primary">Save Changes</button>
+      </div>
     </div>
   </div>
 
