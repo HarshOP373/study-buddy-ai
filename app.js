@@ -118,7 +118,7 @@ function saveSettings() {
 }
 
 // ============================================================================
-// 4. Knowledge Base Loader & Matcher
+// 4. Safe Knowledge Base Loader & Matcher (Will never crash if JSON is missing)
 // ============================================================================
 
 async function fetchKnowledgeBase() {
@@ -126,23 +126,34 @@ async function fetchKnowledgeBase() {
     const res = await fetch('./study-data.json');
     if (res.ok) {
       const data = await res.json();
-      state.knowledgeBase = data.entries || [];
+      state.knowledgeBase = Array.isArray(data?.entries) ? data.entries : [];
+    } else {
+      state.knowledgeBase = [];
     }
   } catch (err) {
-    console.warn('[KnowledgeBase] Offline JSON not found; skipping lookup.');
+    state.knowledgeBase = [];
   }
 }
 
 function findRelevantStudyContext(userQuery) {
-  if (!state.knowledgeBase || !state.knowledgeBase.length) return null;
-  const q = userQuery.toLowerCase().trim();
+  if (!state.knowledgeBase || !Array.isArray(state.knowledgeBase) || !state.knowledgeBase.length) return null;
+  const q = String(userQuery || '').toLowerCase().trim();
+  if (!q) return null;
 
   for (const entry of state.knowledgeBase) {
-    if (q.includes(entry.title.toLowerCase())) return entry;
-    if (entry.keywords && entry.keywords.length) {
+    if (!entry || typeof entry !== 'object') continue;
+
+    if (entry.title && typeof entry.title === 'string' && q.includes(entry.title.toLowerCase())) {
+      return entry;
+    }
+
+    if (Array.isArray(entry.keywords)) {
       for (const k of entry.keywords) {
+        if (!k || typeof k !== 'string') continue;
         const regex = new RegExp(`\\b${k.toLowerCase()}\\b`, 'i');
-        if (regex.test(q)) return entry;
+        if (regex.test(q)) {
+          return entry;
+        }
       }
     }
   }
@@ -707,7 +718,7 @@ async function handleSendMessage() {
     }
   } catch (err) {
     if (err.name === 'AbortError') {
-      // Stopped cleanly by user
+      // Stopped normally by user
     } else if (err.message === 'MISSING_API_KEY') {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key.';
       openModal(true);
