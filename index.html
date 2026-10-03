@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>KinStudy - AI Study & Code Buddy</title>
+  <title>KinStudy - Mini Gemini & Study Buddy</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,7 +19,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
 
-  <!-- Preload WebLLM for 100% offline Airplane Mode functionality -->
+  <!-- Preload WebLLM for offline mode -->
   <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js"></script>
 </head>
 <body>
@@ -33,7 +33,7 @@
         <div class="brand-badge">
           <div class="brand-icon">⚡</div>
           <div class="brand-text">
-            <h1>KinStudy <span class="pill">Pro</span></h1>
+            <h1>KinStudy <span class="pill">Mini Gemini</span></h1>
             <p>Study & Code Companion</p>
           </div>
         </div>
@@ -90,7 +90,7 @@
         </div>
 
         <div class="top-bar-right">
-          <!-- Primary Engine Mode Switcher -->
+          <!-- Engine Mode Selector -->
           <select id="mode-select" class="mode-select-pill" aria-label="Engine Mode">
             <option value="online">⚡ Online</option>
             <option value="offline">💾 Offline (WebGPU)</option>
@@ -103,7 +103,7 @@
             <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
           </select>
 
-          <!-- Offline Model Selector with Coder Option -->
+          <!-- Offline Model Selector -->
           <select id="offline-model-select" class="mode-select-pill" style="display:none;" aria-label="Offline Model">
             <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen2.5-0.5B (Light)</option>
             <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen2.5-1.5B (Deep)</option>
@@ -114,7 +114,7 @@
             <span>📥</span>
           </button>
           <button id="btn-top-settings" class="btn-top-action" title="Settings">
-            <span>⚙️️</span>
+            <span>⚙️</span>
           </button>
         </div>
       </header>
@@ -138,8 +138,8 @@
 
       <!-- Messages Stream -->
       <div id="messages-scroll-area"></div>
-      
-      <!-- Stop Generation Button (Appears during streaming) -->
+
+      <!-- Stop Generation Button (Appears during generation) -->
       <div id="stop-generation-container" class="stop-container" style="display:none;">
         <button id="btn-stop-generating" class="btn-stop" type="button">
           <span class="stop-icon">■</span>
@@ -149,14 +149,11 @@
 
       <!-- Input Bar -->
       <div class="input-section">
-
-      <!-- Input Bar -->
-      <div class="input-section">
         <div class="input-box-wrapper">
           <textarea
             id="chat-input"
             rows="1"
-            placeholder="Ask a question or request code (e.g. 'Build a Flappy Bird game in HTML')..."
+            placeholder="Ask a question or request code..."
             aria-label="Ask question or code"
           ></textarea>
           <button id="btn-send" class="btn-send" title="Send (Enter)" aria-label="Send">
@@ -197,7 +194,7 @@
             autocomplete="off"
             spellcheck="false"
           >
-          <span class="form-hint">Stored securely inside your iPad's private browser memory.</span>
+          <span class="form-hint">Stored strictly inside your iPad's private browser memory.</span>
         </div>
 
         <div class="form-group box-card">
@@ -215,7 +212,7 @@
             rows="3"
             placeholder="Type your custom study rules or role..."
           ></textarea>
-          <span class="form-hint">When disabled, the AI responds neutrally without any persona rules.</span>
+          <span class="form-hint">When disabled, the AI responds neutrally without persona rules.</span>
         </div>
 
         <div class="form-group" style="padding-top:0.75rem; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
