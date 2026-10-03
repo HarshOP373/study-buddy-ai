@@ -15,12 +15,9 @@
   <link rel="manifest" href="./manifest.json">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.gstatic.com">
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css">
-
-  <!-- Preload WebLLM IIFE for Safari & iPad -->
-  <script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/web-llm.iife.min.js"></script>
 </head>
 <body>
 
@@ -161,7 +158,7 @@
           </button>
         </div>
         <div class="input-caption">
-          Press <strong>Enter</strong> to send • <strong>Shift + Enter</strong> for new line • Code Blocks & Instant Match active
+          Press <strong>Enter</strong> to send • <strong>Shift + Enter</strong> for new line • Code Blocks active
         </div>
       </div>
     </main>
@@ -230,6 +227,7 @@
     </div>
   </div>
 
-  <script defer src="./app.js"></script>
+  <!-- Standard ES Module Entry -->
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
