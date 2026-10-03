@@ -1,0 +1,69 @@
+{
+  "version": "1.0.0",
+  "name": "KinStudy Offline Knowledge Base",
+  "description": "Essential Mathematics formulas and Science laws for instant offline study lookup",
+  "entries": [
+    {
+      "id": "quadratic-formula",
+      "title": "Quadratic Formula",
+      "category": "Mathematics (Algebra)",
+      "keywords": ["quadratic", "quadratic formula", "roots", "ax2", "parabola", "discriminant"],
+      "formula": "x = (-b ± √(b² - 4ac)) / (2a)",
+      "explanation": "Finds the solutions (roots or x-intercepts) for any quadratic equation of the form ax² + bx + c = 0.",
+      "analogy": "Think of the discriminant as a traffic signal: positive means two real crossroads, zero means one touchpoint, and negative means complex numbers!",
+      "stepByStep": [
+        "Write equation in standard form: ax² + bx + c = 0",
+        "Identify coefficients a, b, and c",
+        "Calculate D = b² - 4ac",
+        "Substitute into x = (-b ± √D) / (2a)"
+      ],
+      "example": "For x² - 5x + 6 = 0: a=1, b=-5, c=6. D = 1. Roots are x = 3 and x = 2."
+    },
+    {
+      "id": "pythagorean-theorem",
+      "title": "Pythagorean Theorem",
+      "category": "Mathematics (Geometry)",
+      "keywords": ["pythagoras", "pythagorean", "hypotenuse", "right triangle", "triangle sides"],
+      "formula": "a² + b² = c²  (c = √(a² + b²))",
+      "explanation": "In any right-angled triangle, the square of the hypotenuse is equal to the sum of the squares of the other two sides.",
+      "analogy": "Walking diagonally across a rectangular park is your shortcut hypotenuse c!",
+      "stepByStep": [
+        "Verify triangle has a 90-degree right angle",
+        "Identify legs a and b, and hypotenuse c",
+        "Square both legs and add: a² + b²",
+        "Take square root: c = √(a² + b²)"
+      ],
+      "example": "Legs 3 and 4: 3² + 4² = 9 + 16 = 25. c = √25 = 5."
+    },
+    {
+      "id": "newtons-second-law",
+      "title": "Newton's Second Law of Motion",
+      "category": "Science (Physics)",
+      "keywords": ["newton", "force", "mass", "acceleration", "f=ma", "motion"],
+      "formula": "F = m · a  (Force = Mass × Acceleration)",
+      "explanation": "The acceleration of an object is directly proportional to the net force acting upon it and inversely proportional to its mass.",
+      "analogy": "Pushing an empty shopping cart is effortless, but a cart full of heavy books takes much more force to speed up!",
+      "stepByStep": [
+        "Identify mass m in kilograms",
+        "Identify acceleration a in m/s²",
+        "Multiply: F = m × a (result in Newtons)"
+      ],
+      "example": "1000 kg car accelerating at 3 m/s²: F = 1000 × 3 = 3000 N."
+    },
+    {
+      "id": "photosynthesis",
+      "title": "Chemical Equation of Photosynthesis",
+      "category": "Science (Biology)",
+      "keywords": ["photosynthesis", "glucose", "chlorophyll", "plants", "carbon dioxide", "oxygen"],
+      "formula": "6CO₂ + 6H₂O + Sunlight → C₆H₁₂O₆ + 6O₂",
+      "explanation": "Plants convert carbon dioxide and water into glucose sugar and oxygen gas using sunlight energy.",
+      "analogy": "Plants are solar-powered bakeries turning air and water into food using light as the oven heat!",
+      "stepByStep": [
+        "Reactants: 6CO₂ and 6H₂O",
+        "Driver: Sunlight photons absorbed by chlorophyll",
+        "Products: 1 Glucose (C₆H₁₂O₆) and 6 Oxygen (6O₂)"
+      ],
+      "example": "Plants absorb atmospheric CO₂ and release O₂ into the air."
+    }
+  ]
+}
