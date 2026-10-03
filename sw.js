@@ -1,13 +1,12 @@
-const CACHE_NAME = 'study-buddy-cache-v8';
+const CACHE_NAME = 'study-buddy-cache-v10';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './study-data.json',
   './manifest.json',
-  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js'
+  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/web-llm.iife.min.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -33,7 +32,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Allow models and APIs to fetch directly without Service Worker caching
+  // Allow Hugging Face models, large files, and Google APIs to bypass service worker caching
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
