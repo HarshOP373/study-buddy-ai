@@ -3,6 +3,8 @@
  * Multi-Model Online, Multi-Model Offline, Real-Time Streaming, Stop Button & Code Blocks
  */
 
+import * as webllm from "https://esm.run/@mlc-ai/web-llm@0.2.78";
+
 // ============================================================================
 // 1. Configuration & Constants
 // ============================================================================
@@ -281,16 +283,6 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
-    let webllm = window.webllm;
-    if (!webllm) {
-      const module = await import("https://esm.run/@mlc-ai/web-llm@0.2.78");
-      webllm = module.default || module;
-    }
-
-    if (!webllm || !webllm.CreateMLCEngine) {
-      throw new Error('WebLLM library is still initializing. Ensure you are connected to Wi-Fi and refresh once.');
-    }
-
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -731,7 +723,7 @@ async function handleSendMessage() {
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
       assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar.';
     } else {
-      assistantMsg.content = `⚠️ **Error:** ${err.message || err}`;
+      assistantMsg.content = `⚠️️ **Error:** ${err.message || err}`;
     }
     updateStreamingBubble(assistantMsg.content);
   } finally {
