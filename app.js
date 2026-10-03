@@ -1,127 +1,944 @@
-const $ = (id) => document.getElementById(id);
-const STORAGE = { chats: 'kinstudy.chats.v2', active: 'kinstudy.active.v2', mode: 'kinstudy.mode.v2', models: 'kinstudy.models.v2', theme: 'kinstudy.theme.v2', key: 'kinstudy.geminiKey.v2', instructions: 'kinstudy.instructions.v2' };
-const ONLINE_MODELS = [
-  { id: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
-  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash' },
-  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' }
-];
-// IDs are checked against WebLLM's actual prebuilt model registry before being shown.
-const OFFLINE_CANDIDATES = [
-  { id: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 1.5B Instruct' },
-  { id: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 Coder 1.5B' },
-  { id: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 0.5B Instruct' }
-];
-const SYSTEM_BASE = `You are KinStudy Pro, a friendly, patient AI study and coding assistant. Respond naturally and remember the conversation using the supplied history. Explain school topics clearly with examples. When solving maths, show understandable steps and put equations in LaTeX delimiters such as \\(x^2\\) or \\[x=\\frac{-b\\pm\\sqrt{b^2-4ac}}{2a}\\]. When writing code, use fenced Markdown code blocks with a language label and explain what the code does. Do not put ordinary prose inside code fences. Never claim code was executed unless a real execution tool ran it. For projects with multiple files, clearly label each file. Be honest about limitations.`;
-let chats = loadJSON(STORAGE.chats, []);
-let activeId = localStorage.getItem(STORAGE.active) || null;
-let engine = null, engineModelId = null, webllm = null, loading = false, generating = false, abortController = null;
-let attachedFiles = [], studyEntries = [], availableOffline = [], cachedRuntime = false;
+import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
-function loadJSON(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; } catch { return fallback; } }
-function saveJSON(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { console.warn('Storage unavailable', e); } }
-function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`; }
-function currentChat() { return chats.find(c => c.id === activeId); }
-function ensureChat() { let chat = currentChat(); if (!chat) { chat = { id: uid(), title: 'New chat', messages: [], updatedAt: Date.now() }; chats.unshift(chat); activeId = chat.id; persistChats(); } return chat; }
-function persistChats() { saveJSON(STORAGE.chats, chats); if (activeId) localStorage.setItem(STORAGE.active, activeId); renderChatList(); }
-function activeMode() { return $('modeSelect').value; }
-function selectedModel() { return $('modelSelect').value; }
-function systemPrompt() { return `${SYSTEM_BASE}\n\nRelevant offline study reference (use only when relevant):\n${findStudyContext((currentChat()?.messages || []).slice(-1)[0]?.content || '')}\n\nUser's custom instructions:\n${localStorage.getItem(STORAGE.instructions) || 'None'}`; }
-function escapeHTML(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function simpleMath(s) {
-  return String(s).replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1) ÷ ($2)').replace(/\\sqrt\{([^{}]+)\}/g, '√($1)').replace(/\\times/g,'×').replace(/\\cdot/g,'·').replace(/\\div/g,'÷').replace(/\\pm/g,'±').replace(/\\pi/g,'π').replace(/\\theta/g,'θ').replace(/\\leq/g,'≤').replace(/\\geq/g,'≥').replace(/\\neq/g,'≠').replace(/\\rightarrow|\\to/g,'→').replace(/\\left|\\right/g,'').replace(/\\text\{([^{}]*)\}/g,'$1').replace(/\^\{([^{}]+)\}/g,'^($1)').replace(/_{([^{}]+)}/g,'_($1)').replace(/\\,/g,' ').replace(/\\;/g,' ').replace(/\\quad/g,'   ').replace(/\\/g,'');
-}
-function inlineFormat(raw) {
-  let s = escapeHTML(raw);
-  s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
-  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-  s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_,m) => `<div class="math-block">${escapeHTML(simpleMath(m))}</div>`);
-  s = s.replace(/\\\[([\s\S]+?)\\\]/g, (_,m) => `<div class="math-block">${escapeHTML(simpleMath(m))}</div>`);
-  s = s.replace(/\\\((.+?)\\\)/g, (_,m) => `<span class="math-inline">${escapeHTML(simpleMath(m))}</span>`);
-  s = s.replace(/\$([^$\n]+)\$/g, (_,m) => `<span class="math-inline">${escapeHTML(simpleMath(m))}</span>`);
-  return s;
-}
-function renderMarkdown(text) {
-  const blocks = []; let source = String(text ?? '').replace(/\r/g,'');
-  source = source.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_,lang,code) => { const idx=blocks.length; blocks.push({lang:lang||'code',code}); return `@@CODEBLOCK${idx}@@`; });
-  const lines = source.split('\n'), out=[]; let inList=false;
-  for (const line of lines) {
-    if (/^@@CODEBLOCK\d+@@$/.test(line.trim())) { if(inList){out.push('</ul>');inList=false;} out.push(line.trim()); continue; }
-    if (/^\s*[-*]\s+/.test(line)) { if(!inList){out.push('<ul>');inList=true;} out.push(`<li>${inlineFormat(line.replace(/^\s*[-*]\s+/,''))}</li>`); continue; }
-    if(inList){out.push('</ul>');inList=false;}
-    if(/^###\s+/.test(line)) out.push(`<h3>${inlineFormat(line.replace(/^###\s+/,''))}</h3>`);
-    else if(/^##\s+/.test(line)) out.push(`<h2>${inlineFormat(line.replace(/^##\s+/,''))}</h2>`);
-    else if(/^#\s+/.test(line)) out.push(`<h1>${inlineFormat(line.replace(/^#\s+/,''))}</h1>`);
-    else if(/^>\s?/.test(line)) out.push(`<blockquote>${inlineFormat(line.replace(/^>\s?/,''))}</blockquote>`);
-    else if(line.trim()) out.push(`<p>${inlineFormat(line)}</p>`);
+/* KinStudy Pro — replacement app.js */
+
+const $ = (...selectors) => {
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) return element;
   }
-  if(inList) out.push('</ul>');
-  let html=out.join('');
-  html=html.replace(/@@CODEBLOCK(\d+)@@/g,(_,n)=>{const b=blocks[Number(n)];return `<section class="code-block"><div class="code-toolbar"><span>${escapeHTML(b.lang)}</span><button type="button" class="copy-code" data-code-index="${n}">Copy code</button></div><pre><code>${escapeHTML(b.code)}</code></pre></section>`;});
-  // Friendly fallback for common equations written without math delimiters.
-  html=html.replace(/\b([A-Za-z])\^2\s*\+\s*([A-Za-z])\^2\s*=\s*([A-Za-z])\^2/g, '<span class="math-inline">$1² + $2² = $3²</span>');
-  return {html, blocks};
+  return null;
+};
+
+const ui = {
+  mode: $("#modeSelect", "#mode-select", "#providerSelect", "#aiMode"),
+  model: $("#modelSelect", "#model-select", "#offlineModelSelect"),
+  load: $("#loadModelBtn", "#load-model", "#loadModel"),
+  free: $("#freeRamBtn", "#free-ram", "#freeRam"),
+  form: $("#chatForm", "#messageForm", "#composerForm"),
+  input: $("#messageInput", "#message-input", "#promptInput", "textarea"),
+  send: $("#sendBtn", "#send-button", "#sendButton"),
+  messages: $("#messages", "#chatMessages", "#messagesContainer", "#chatContainer"),
+  status: $("#statusText", "#engineStatus", "#status"),
+  progress: $("#modelProgress", "#loadProgress", "progress"),
+  apiKey: $("#apiKey", "#geminiApiKey", "#gemini-api-key"),
+  settings: $("#settingsModal", "#settings"),
+  newChat: $("#newChatBtn", "#new-chat", "#newChat"),
+  theme: $("#themeBtn", "#themeToggle", "#theme-toggle"),
+  chatList: $("#chatList", "#chat-list", "#conversationList"),
+  tokenCount: $("#tokenCount", "#token-count")
+};
+
+const STORAGE = {
+  key: "kinstudy_gemini_api_key",
+  chats: "kinstudy_chats_v2",
+  current: "kinstudy_current_chat_v2",
+  mode: "kinstudy_mode_v2",
+  model: "kinstudy_model_v2",
+  theme: "kinstudy_theme_v2",
+  instructions: "kinstudy_custom_instructions_v2"
+};
+
+const ONLINE_MODELS = [
+  { id: "gemini-3.8-flash", name: "Gemini 3.8 Flash" },
+  { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash" },
+  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash" }
+];
+
+const OFFLINE_PREFERENCES = [
+  /Qwen2.5-0.5B-Instruct-q4f16_1-MLC/i,
+  /Qwen2.5-1.5B-Instruct-q4f16_1-MLC/i,
+  /Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC/i,
+  /SmolLM2-360M-Instruct-q4f16_1-MLC/i,
+  /Llama-3.2-1B-Instruct-q4f16_1-MLC/i,
+  /Qwen3-0.6B-q4f16_1-MLC/i
+];
+
+let modelRegistry = [];
+let engine = null;
+let engineModelId = null;
+let busy = false;
+let stopRequested = false;
+let currentAbortController = null;
+let studyEntries = [];
+let currentChatId = null;
+let chats = loadChats();
+
+function safeJSON(value, fallback) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
-function renderMessages() {
-  const host=$('messages'); host.replaceChildren(); const chat=currentChat();
-  if(!chat || !chat.messages.length){ const w=document.createElement('div');w.className='welcome';w.innerHTML='<h1>What are we learning today?</h1><p>Ask a question, solve a maths problem, or build something with code.</p>';host.append(w); $('tokenCount').textContent='Tokens: estimate unavailable';return; }
-  let tokens=0;
-  chat.messages.forEach((m,i)=>{ if(m.role==='system')return; tokens+=Math.ceil((m.content||'').length/4); const el=document.createElement('article');el.className=`message ${m.role==='user'?'user':'assistant'}`;const avatar=m.role==='user'?'Y':'K';const who=m.role==='user'?'You':'KinStudy';const parsed=m.role==='assistant'?renderMarkdown(m.content):null;
-    el.innerHTML=`<div class="avatar">${avatar}</div><div class="message-body"><div class="message-head"><strong>${who}</strong><button type="button" class="copy-message" data-message-index="${i}">Copy</button></div><div class="message-content">${m.role==='user'?`<p>${escapeHTML(m.content).replace(/\n/g,'<br>')}</p>`:parsed.html}</div></div>`;host.append(el);
+
+function loadChats() {
+  const value = safeJSON(localStorage.getItem(STORAGE.chats), []);
+  return Array.isArray(value) ? value : [];
+}
+
+function makeId() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getCurrentChat() {
+  let chat = chats.find(item => item.id === currentChatId);
+
+  if (!chat) {
+    chat = {
+      id: makeId(),
+      title: "New chat",
+      messages: [],
+      updatedAt: Date.now()
+    };
+    chats.unshift(chat);
+    currentChatId = chat.id;
+    saveChats();
+  }
+
+  if (!Array.isArray(chat.messages)) chat.messages = [];
+  return chat;
+}
+
+function saveChats() {
+  try {
+    localStorage.setItem(STORAGE.chats, JSON.stringify(chats));
+    localStorage.setItem(STORAGE.current, currentChatId || "");
+  } catch {
+    setStatus("Storage is full. Export or delete old chats.");
+  }
+}
+
+function escapeHTML(value) {
+  return String(value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function renderText(text) {
+  const escaped = escapeHTML(text);
+  const codeBlocks = [];
+
+  let html = escaped.replace(
+    /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g,
+    (_, language, code) => {
+      const index = codeBlocks.push({ language, code }) - 1;
+      return `%%CODEBLOCK_${index}%%`;
+    }
+  );
+
+  html = html
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|\n)### (.+)/g, "$1<h3>$2</h3>")
+    .replace(/(^|\n)## (.+)/g, "$1<h2>$2</h2>")
+    .replace(/(^|\n)# (.+)/g, "$1<h1>$2</h1>")
+    .replace(/\n/g, "<br>");
+
+  html = html.replace(/%%CODEBLOCK_(\d+)%%/g, (_, index) => {
+    const block = codeBlocks[Number(index)];
+    if (!block) return "";
+
+    return `<div class="ks-code">
+      <div class="ks-code-head">
+        <span>${escapeHTML(block.language || "Code")}</span>
+        <button type="button" class="ks-copy-code"
+          data-copy="${Number(index)}">Copy code</button>
+      </div>
+      <pre><code>${block.code}</code></pre>
+    </div>`;
   });
-  $('tokenCount').textContent=`~${tokens.toLocaleString()} tokens in chat (estimate)`;host.scrollTop=host.scrollHeight;
+
+  return html;
 }
+
+function ensureCodeStyles() {
+  if ($("#kinstudy-runtime-styles")) return;
+
+  const style = document.createElement("style");
+  style.id = "kinstudy-runtime-styles";
+  style.textContent = `
+    .ks-code{margin:12px 0;border:1px solid var(--border-color,#303846);
+      border-radius:12px;overflow:hidden;background:var(--code-bg,#141820)}
+    .ks-code-head{display:flex;justify-content:space-between;align-items:center;
+      gap:12px;padding:8px 12px;background:var(--surface-color,#202632);
+      font-size:13px}
+    .ks-code pre{overflow:auto;padding:14px;margin:0;white-space:pre}
+    .ks-code code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .ks-copy-code{cursor:pointer;padding:5px 10px;border-radius:7px}
+    .ks-message{white-space:normal;overflow-wrap:anywhere}
+    .ks-message img{max-width:100%;height:auto}
+    .ks-error{color:#d94a4a}
+    .ks-status{font-size:13px;opacity:.85}
+    .ks-math{padding:10px;margin:8px 0;overflow-x:auto;
+      border-radius:8px;background:var(--surface-color,#202632)}
+  `;
+  document.head.appendChild(style);
+}
+
+function renderMath(root) {
+  if (!root || !window.renderMathInElement) return;
+
+  try {
+    window.renderMathInElement(root, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "\\[", right: "\\]", display: true },
+        { left: "\\(", right: "\\)", display: false },
+        { left: "$", right: "$", display: false }
+      ],
+      throwOnError: false
+    });
+  } catch {
+    // Keep readable plain-text equations if the renderer is unavailable.
+  }
+}
+
+function renderMessages() {
+  const chat = getCurrentChat();
+  if (!ui.messages) return;
+
+  ui.messages.innerHTML = "";
+
+  for (const message of chat.messages) {
+    const article = document.createElement("article");
+    article.className = `ks-message ${message.role === "user" ? "user-message" : "assistant-message"}`;
+
+    const heading = document.createElement("div");
+    heading.className = "message-author";
+    heading.textContent = message.role === "user" ? "You" : "KinStudy";
+
+    const body = document.createElement("div");
+    body.className = "message-content";
+    body.innerHTML = renderText(message.content || "");
+
+    article.append(heading, body);
+    ui.messages.appendChild(article);
+  }
+
+  renderMath(ui.messages);
+  ui.messages.scrollTop = ui.messages.scrollHeight;
+  updateTokenCount();
+  renderChatList();
+}
+
 function renderChatList() {
- const host=$('chatList');if(!host)return;host.replaceChildren();chats.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
- chats.forEach(chat=>{const row=document.createElement('div');row.className='chat-item';const open=document.createElement('button');open.className='chat-open'+(chat.id===activeId?' active':'');open.textContent=chat.title||'New chat';open.title=chat.title||'New chat';open.onclick=()=>{activeId=chat.id;localStorage.setItem(STORAGE.active,activeId);renderChatList();renderMessages();updateTitle();};const del=document.createElement('button');del.className='delete-chat';del.textContent='×';del.title='Delete chat';del.onclick=()=>{chats=chats.filter(c=>c.id!==chat.id);if(activeId===chat.id)activeId=chats[0]?.id||null;persistChats();renderMessages();updateTitle();};row.append(open,del);host.append(row);});
+  if (!ui.chatList) return;
+
+  ui.chatList.innerHTML = "";
+
+  for (const chat of chats) {
+    const row = document.createElement("div");
+    row.className = "chat-list-item";
+
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = chat.title || "New chat";
+    open.addEventListener("click", () => {
+      currentChatId = chat.id;
+      saveChats();
+      renderMessages();
+      updateHeader();
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "×";
+    remove.setAttribute("aria-label", "Delete chat");
+    remove.addEventListener("click", () => {
+      chats = chats.filter(item => item.id !== chat.id);
+
+      if (currentChatId === chat.id) {
+        currentChatId = chats[0]?.id || null;
+      }
+
+      saveChats();
+      renderMessages();
+      updateHeader();
+    });
+
+    row.append(open, remove);
+    ui.chatList.appendChild(row);
+  }
 }
-function updateTitle(){const c=currentChat();$('currentTitle').textContent=c?.title||'New chat';$('modeStatus').textContent=activeMode()==='online'?'Online · Gemini':`Offline · ${engine?engineModelId:'model not loaded'}`;}
-function fillModels() { const mode=activeMode(), select=$('modelSelect');select.replaceChildren();const list=mode==='online'?ONLINE_MODELS:availableOffline;list.forEach(m=>{const o=document.createElement('option');o.value=m.id;o.textContent=m.label;select.append(o);});const saved=loadJSON(STORAGE.models,{});const wanted=saved[mode];if(wanted&&list.some(m=>m.id===wanted))select.value=wanted;if(mode==='offline'&&!list.length){const o=document.createElement('option');o.value='';o.textContent='No supported models found';select.append(o);} $('engineCard').hidden=mode==='online';$('engineTitle').textContent=mode==='online'?'Gemini online':'Offline engine';updateTitle();}
-function setLoadStatus(text,progress=null){$('loadMessage').textContent=text;if(progress!==null)$('loadProgress').value=progress;}
-async function initRuntimeRegistry(){try{const mod=await import('https://esm.run/@mlc-ai/web-llm');webllm=mod;const ids=new Set((mod.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id));availableOffline=OFFLINE_CANDIDATES.filter(m=>ids.has(m.id));if(!availableOffline.length){ // Show only candidates that the registry actually exposes; no guessed IDs.
-  availableOffline=(mod.prebuiltAppConfig?.model_list||[]).filter(x=>/Qwen2\.5.*(0\.5B|1\.5B).*Instruct.*q4f16_1-MLC/i.test(x.model_id)).map(x=>({id:x.model_id,label:x.model_id.replace(/-q4f16_1-MLC/,'')}));
- }
- cachedRuntime=true;fillModels();$('engineStatus').textContent=('gpu' in navigator)?'WebGPU may be available; check device support':'WebGPU API unavailable in this browser';$('storageNote').textContent='Model files are stored separately from the app shell; first download requires internet and enough storage.';
- }catch(e){webllm=null;availableOffline=[];fillModels();$('engineStatus').textContent='Offline runtime could not load. Connect once and reload.';setLoadStatus(`Runtime import failed: ${e.message}`);}}
-async function checkGPU(){try{if(!navigator.gpu){$('engineStatus').textContent='WebGPU unavailable in this browser/device';return false;}const adapter=await navigator.gpu.requestAdapter();const ok=!!adapter;$('engineStatus').textContent=ok?'WebGPU adapter detected':'No WebGPU adapter found';return ok;}catch{$('engineStatus').textContent='WebGPU check failed';return false;}}
-async function loadOfflineModel(){if(loading)return;if(!webllm){await initRuntimeRegistry();}const modelId=selectedModel();if(!modelId){setLoadStatus('No compatible WebLLM model was found in the loaded registry.');return;}if(!await checkGPU()){setLoadStatus('This browser/device does not currently expose WebGPU. Offline AI cannot run here.');return;}if(engine&&engineModelId===modelId){setLoadStatus(`Loaded: ${modelId}`,1);return;}if(engine){await freeEngine();}loading=true;$('loadBtn').disabled=true;$('loadProgress').value=0;setLoadStatus('Preparing model…',0);
- try{engine=await webllm.CreateMLCEngine(modelId,{initProgressCallback:(report)=>{const p=typeof report.progress==='number'?report.progress:0;setLoadStatus(report.text||'Loading model…',Math.max(0,Math.min(1,p)));}});engineModelId=modelId;setLoadStatus(`Loaded: ${modelId}`,1);$('engineStatus').textContent='Model ready';updateTitle();}
- catch(e){engine=null;engineModelId=null;setLoadStatus(`Model failed to load: ${e.message}. Check available memory/storage and confirm this model is supported by WebLLM.`,0);}
- finally{loading=false;$('loadBtn').disabled=false;}}
-async function freeEngine(){if(generating){abortController?.abort();}try{if(engine){if(typeof engine.unload==='function')await engine.unload();else if(typeof engine.resetChat==='function')await engine.resetChat();}}catch(e){console.warn('Engine cleanup',e);}engine=null;engineModelId=null;setLoadStatus('Model unloaded from active memory. Cached download may remain on device.',0);$('engineStatus').textContent='Runtime ready';updateTitle();}
-function findStudyContext(query){if(!studyEntries.length)return 'No local reference matched.';const words=String(query).toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>2);const ranked=studyEntries.map(e=>({e,score:[e.subject,e.topic,...(e.keywords||[]),e.content].join(' ').toLowerCase().split(/[^a-z0-9]+/).filter(w=>words.includes(w)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3);return ranked.length?ranked.map(x=>`${x.e.subject} — ${x.e.topic}: ${x.e.content}`).join('\n'):'No local reference matched.';}
-async function loadStudyData(){try{const r=await fetch('./study-data.json');if(r.ok){const j=await r.json();studyEntries=j.entries||[];}}catch(e){console.warn('Study data not available offline',e);}}
-function buildMessages(chat){const msgs=[{role:'system',content:systemPrompt()}];for(const m of chat.messages){if(m.role==='system')continue;msgs.push({role:m.role,content:m.content});}return msgs;}
-async function geminiReply(chat,assistantMsg){const key=localStorage.getItem(STORAGE.key)||'';if(!key){throw new Error('Add your Gemini API key in Settings first. Use a Google AI Studio API key, not an OAuth access token.');}const model=selectedModel()||ONLINE_MODELS[0].id;const contents=[];for(const m of chat.messages){if(m.role==='system')continue;contents.push({role:m.role==='assistant'?'model':'user',parts:[{text:m.content}]});}const sys=systemPrompt();const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
- const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents,generationConfig:{maxOutputTokens:8192}})});
- if(!response.ok){let detail='';try{const j=await response.json();detail=j.error?.message||JSON.stringify(j.error||j);}catch{detail=await response.text().catch(()=> '');}if(response.status===401||response.status===403)throw new Error(`Gemini authentication failed (${response.status}). ${detail} Check that this is a Gemini API key from AI Studio, that it is enabled, and that API restrictions allow the Generative Language API.`);throw new Error(`Gemini API ${response.status}: ${detail}`);}
- const data=await response.json();const text=(data.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('');if(!text)throw new Error(data.promptFeedback?.blockReason?`Request blocked: ${data.promptFeedback.blockReason}`:'Gemini returned an empty response.');assistantMsg.content=text;
+
+function updateTokenCount() {
+  if (!ui.tokenCount) return;
+
+  const chat = getCurrentChat();
+  const text = chat.messages.map(item => item.content || "").join(" ");
+  const estimate = Math.ceil(text.length / 4);
+
+  ui.tokenCount.textContent = `~${estimate} tokens in chat (estimate)`;
 }
-async function offlineReply(chat,assistantMsg){if(!engine||engineModelId!==selectedModel())throw new Error('Load the selected offline model before sending a message.');const messages=buildMessages(chat);let response=await engine.chat.completions.create({messages,temperature:0.6,max_tokens:4096,stream:true});let output='';for await(const part of response){if(abortController?.signal.aborted)break;const delta=part.choices?.[0]?.delta?.content;if(typeof delta==='string'){output+=delta;assistantMsg.content=output;renderMessages();}}if(!output&&!abortController?.signal.aborted)throw new Error('The offline model returned no text. Try a shorter prompt or reload the model.');}
-function addMessage(role,content){const chat=ensureChat();const msg={role,content,createdAt:Date.now()};chat.messages.push(msg);chat.updatedAt=Date.now();if(role==='user'&&chat.title==='New chat'){chat.title=content.trim().slice(0,36)||'New chat';}persistChats();return msg;}
-async function sendMessage(){if(generating)return;const input=$('messageInput');const text=input.value.trim();if(!text&&!attachedFiles.length)return;const fileContext=attachedFiles.map(f=>`[Attached file: ${f.name}]\n${f.text||f.note||''}`).join('\n\n');const userText=[text,fileContext].filter(Boolean).join('\n\n');input.value='';input.style.height='auto';const filesSnapshot=attachedFiles.slice();attachedFiles=[];renderAttachmentChip();const chat=ensureChat();addMessage('user',userText);const assistant=addMessage('assistant','');generating=true;abortController=new AbortController();$('sendBtn').textContent='Stop';$('sendBtn').classList.add('stop');$('sendBtn').disabled=false;
- try{if(activeMode()==='online')await geminiReply(chat,assistant);else await offlineReply(chat,assistant);chat.updatedAt=Date.now();persistChats();renderMessages();}
- catch(e){assistant.content=`Error: ${e?.message||String(e)}`;renderMessages();}
- finally{generating=false;abortController=null;$('sendBtn').textContent='Send';$('sendBtn').classList.remove('stop');persistChats();updateTitle();}
+
+function updateHeader() {
+  const chat = getCurrentChat();
+  const title = $("#chatTitle", "#conversationTitle");
+  if (title) title.textContent = chat.title || "New chat";
 }
-function renderAttachmentChip(){const host=$('attachmentChip');if(!attachedFiles.length){host.hidden=true;host.textContent='';return;}host.hidden=false;host.textContent=attachedFiles.map(f=>f.name).join(' · ')+'  — click × to remove';host.onclick=()=>{attachedFiles=[];renderAttachmentChip();};host.title='Click to remove attachments';}
-async function readFile(file){const ext=file.name.split('.').pop().toLowerCase();if(file.size>12*1024*1024)throw new Error(`${file.name} is over 12 MB. Please choose a smaller file.`);if(ext==='pdf'){throw new Error('PDF text extraction is not included in this minimal six-file build. Upload a text/Markdown file or copy the relevant PDF text into chat.');}if(file.type.startsWith('image/'))return {name:file.name,note:'Image attached, but vision input is not enabled in this build. Please describe the image or use online model support that accepts image input.'};const text=await file.text();return {name:file.name,text:text.slice(0,80000)};}
-async function handleFiles(files){for(const file of files){try{const f=await readFile(file);attachedFiles.push(f);}catch(e){addMessage('assistant',`File error: ${e.message}`);}}renderAttachmentChip();}
-function saveSettings(){const key=$('apiKeyInput').value.trim();if(key)localStorage.setItem(STORAGE.key,key);else localStorage.removeItem(STORAGE.key);localStorage.setItem(STORAGE.instructions,$('instructionsInput').value.trim());$('settingsDialog').close();}
-function setTheme(){const theme=localStorage.getItem(STORAGE.theme)==='light'?'light':'dark';document.documentElement.classList.toggle('light',theme==='light');$('themeBtn').textContent=theme==='light'?'☾ Dark theme':'☀ Light theme';}
-function downloadText(name,text,type='text/plain'){const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-function wireEvents(){
- $('newChatBtn').onclick=()=>{activeId=null;ensureChat();renderChatList();renderMessages();updateTitle();$('sidebar').classList.remove('open');};
- $('themeBtn').onclick=()=>{localStorage.setItem(STORAGE.theme,document.documentElement.classList.contains('light')?'dark':'light');setTheme();};
- $('settingsBtn').onclick=()=>{$('apiKeyInput').value=localStorage.getItem(STORAGE.key)||'';$('instructionsInput').value=localStorage.getItem(STORAGE.instructions)||'';$('settingsDialog').showModal();};$('saveSettingsBtn').onclick=saveSettings;
- $('menuBtn').onclick=()=>$('sidebar').classList.toggle('open');
- $('modeSelect').value=localStorage.getItem(STORAGE.mode)||'offline';$('modeSelect').onchange=()=>{localStorage.setItem(STORAGE.mode,activeMode());fillModels();};
- $('modelSelect').onchange=()=>{const saved=loadJSON(STORAGE.models,{});saved[activeMode()]=selectedModel();saveJSON(STORAGE.models,saved);updateTitle();};
- $('loadBtn').onclick=loadOfflineModel;$('freeBtn').onclick=freeEngine;
- $('sendBtn').onclick=()=>{if(generating){abortController?.abort();return;}sendMessage();};
- $('messageInput').addEventListener('input',()=>{const t=$('messageInput');t.style.height='auto';t.style.height=`${Math.min(t.scrollHeight,180)}px`;});$('messageInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
- $('attachBtn').onclick=()=>$('fileInput').click();$('fileInput').onchange=async e=>{await handleFiles([...e.target.files]);e.target.value='';};
- $('messages').addEventListener('click',async e=>{const codeBtn=e.target.closest('.copy-code');const msgBtn=e.target.closest('.copy-message');if(codeBtn){const article=codeBtn.closest('.code-block');const code=article?.querySelector('pre code')?.textContent||'';try{await navigator.clipboard.writeText(code);codeBtn.textContent='Copied!';setTimeout(()=>codeBtn.textContent='Copy code',1200);}catch{downloadText('code.txt',code);codeBtn.textContent='Downloaded';}return;}if(msgBtn){const index=Number(msgBtn.dataset.messageIndex);const m=currentChat()?.messages[index];if(m){try{await navigator.clipboard.writeText(m.content);msgBtn.textContent='Copied!';setTimeout(()=>msgBtn.textContent='Copy',1200);}catch{downloadText('message.txt',m.content);}}}});
+
+function setStatus(message, progress = null) {
+  if (ui.status) ui.status.textContent = message;
+
+  const offlineStatus = $("#offlineStatus", "#engineStatusText");
+  if (offlineStatus && offlineStatus !== ui.status) {
+    offlineStatus.textContent = message;
+  }
+
+  if (ui.progress && progress !== null) {
+    ui.progress.max = 100;
+    ui.progress.value = Math.max(0, Math.min(100, progress));
+  }
 }
-async function registerSW(){if(!('serviceWorker'in navigator))return;try{await navigator.serviceWorker.register('./sw.js');}catch(e){console.warn('Service worker registration failed',e);$('storageNote').textContent='Offline shell caching unavailable: '+e.message;}}
-async function init(){setTheme();wireEvents();if(!activeId||!chats.some(c=>c.id===activeId)){activeId=chats[0]?.id||null;}if(!activeId)ensureChat();renderChatList();renderMessages();updateTitle();await Promise.all([loadStudyData(),initRuntimeRegistry()]);fillModels();await checkGPU();await registerSW();}
-init().catch(e=>{console.error(e);$('engineStatus').textContent='App initialization error';setLoadStatus(e.message);});
+
+function appendMessage(role, content) {
+  const chat = getCurrentChat();
+
+  chat.messages.push({
+    role,
+    content: String(content ?? ""),
+    timestamp: Date.now()
+  });
+
+  if (role === "user" && chat.messages.filter(m => m.role === "user").length === 1) {
+    chat.title = String(content).trim().slice(0, 42) || "New chat";
+  }
+
+  chat.updatedAt = Date.now();
+  saveChats();
+  renderMessages();
+}
+
+function setBusy(value) {
+  busy = value;
+
+  if (ui.send) {
+    ui.send.disabled = value;
+    ui.send.textContent = value ? "Stop" : "Send";
+  }
+
+  if (ui.input) ui.input.disabled = false;
+}
+
+function getMode() {
+  return (ui.mode?.value || localStorage.getItem(STORAGE.mode) || "offline")
+    .toLowerCase()
+    .includes("online") ? "online" : "offline";
+}
+
+function selectedModelId() {
+  return ui.model?.value || localStorage.getItem(STORAGE.model) || "";
+}
+
+function setModelOptions(models) {
+  if (!ui.model) return;
+
+  const previous = selectedModelId();
+  ui.model.innerHTML = "";
+
+  if (!models.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No supported models found";
+    ui.model.appendChild(option);
+    ui.model.disabled = true;
+    return;
+  }
+
+  ui.model.disabled = false;
+
+  for (const model of models) {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.name;
+    ui.model.appendChild(option);
+  }
+
+  const matching = models.find(model => model.id === previous);
+  const preferred = OFFLINE_PREFERENCES
+    .map(pattern => models.find(model => pattern.test(model.id)))
+    .find(Boolean);
+
+  ui.model.value = matching?.id || preferred?.id || models[0].id;
+  localStorage.setItem(STORAGE.model, ui.model.value);
+}
+
+function readableModelName(id) {
+  return id
+    .replace(/-q\d+f\d+_\d+-MLC$/i, "")
+    .replace(/-MLC$/i, "")
+    .replace(/-/g, " ");
+}
+
+function getWebGPU() {
+  return Boolean(navigator.gpu);
+}
+
+async function initializeModelRegistry() {
+  try {
+    const config = webllm.prebuiltAppConfig;
+    modelRegistry = Array.isArray(config?.model_list)
+      ? config.model_list
+      : [];
+
+    const models = modelRegistry
+      .filter(item => item && item.model_id)
+      .map(item => ({
+        id: item.model_id,
+        name: readableModelName(item.model_id)
+      }));
+
+    setModelOptions(models);
+
+    if (!models.length) {
+      setStatus("WebLLM loaded, but its model registry is empty.");
+      return;
+    }
+
+    setStatus(
+      getWebGPU()
+        ? `${models.length} supported models found. Select one and load it.`
+        : "WebGPU is unavailable in this browser. Offline AI cannot run here."
+    );
+  } catch (error) {
+    modelRegistry = [];
+    setModelOptions([]);
+    setStatus(`Could not load WebLLM model registry: ${error.message}`);
+  }
+}
+
+async function loadOfflineModel() {
+  if (busy) return;
+
+  if (!getWebGPU()) {
+    setStatus("WebGPU is unavailable. Try a supported browser/device.");
+    return;
+  }
+
+  const modelId = selectedModelId();
+
+  if (!modelId || !modelRegistry.some(item => item.model_id === modelId)) {
+    setStatus("Select a model listed in WebLLM's supported registry.");
+    return;
+  }
+
+  try {
+    if (engine && engineModelId === modelId) {
+      setStatus(`Model ready: ${readableModelName(modelId)}`);
+      return;
+    }
+
+    await freeOfflineModel();
+    setStatus("Preparing model download and initialization…", 0);
+
+    engine = await webllm.CreateMLCEngine(modelId, {
+      initProgressCallback: report => {
+        const progress = Number(report?.progress);
+        const percent = Number.isFinite(progress)
+          ? Math.round(progress * 100)
+          : null;
+
+        setStatus(
+          report?.text || `Loading offline model${percent !== null ? `: ${percent}%` : "…"}`,
+          percent
+        );
+      }
+    });
+
+    engineModelId = modelId;
+    setStatus(`Model ready: ${readableModelName(modelId)}`, 100);
+  } catch (error) {
+    engine = null;
+    engineModelId = null;
+
+    setStatus(
+      `Model failed to load: ${error.message || error}. Connect to internet for the first download, then retry.`
+    );
+  }
+}
+
+async function freeOfflineModel() {
+  if (engine) {
+    try {
+      if (typeof engine.unload === "function") {
+        await engine.unload();
+      } else if (typeof engine.reset === "function") {
+        await engine.reset();
+      }
+    } catch {
+      // Release references even if the runtime cannot unload explicitly.
+    }
+  }
+
+  engine = null;
+  engineModelId = null;
+  setStatus("Offline model unloaded.");
+}
+
+function getApiKey() {
+  return (ui.apiKey?.value || localStorage.getItem(STORAGE.key) || "").trim();
+}
+
+function saveApiKey() {
+  const key = getApiKey();
+
+  if (key) localStorage.setItem(STORAGE.key, key);
+  else localStorage.removeItem(STORAGE.key);
+
+  setStatus(key ? "Gemini API key saved in this browser." : "Gemini API key removed.");
+}
+
+function cleanGeminiHistory(messages) {
+  const history = [];
+
+  for (const item of messages) {
+    if (!item || !["user", "assistant", "model"].includes(item.role)) continue;
+
+    const role = item.role === "user" ? "user" : "model";
+    const text = String(item.content || "").trim();
+
+    if (!text) continue;
+
+    const last = history[history.length - 1];
+
+    // Gemini contents must alternate roles. Merge adjacent same-role turns.
+    if (last && last.role === role) {
+      last.parts[0].text += `\n\n${text}`;
+    } else {
+      history.push({ role, parts: [{ text }] });
+    }
+  }
+
+  // A GenerateContent request must end with a user turn.
+  while (history.length && history[history.length - 1].role !== "user") {
+    history.pop();
+  }
+
+  return history;
+}
+
+function getStudyContext(question) {
+  if (!Array.isArray(studyEntries) || !studyEntries.length) return "";
+
+  const terms = String(question)
+    .toLowerCase()
+    .match(/[a-z0-9]+/g) || [];
+
+  const scored = studyEntries.map(entry => {
+    const searchable = `${entry.title || ""} ${entry.subject || ""} ${entry.content || ""} ${entry.tags || ""}`
+      .toLowerCase();
+
+    const score = terms.reduce((total, term) => {
+      return total + (searchable.includes(term) ? 1 : 0);
+    }, 0);
+
+    return { entry, score };
+  });
+
+  return scored
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map(item => `${item.entry.title || "Study note"}:\n${item.entry.content || ""}`)
+    .join("\n\n");
+}
+
+async function loadStudyData() {
+  try {
+    const response = await fetch("./study-data.json", { cache: "no-cache" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const data = await response.json();
+    studyEntries = Array.isArray(data) ? data : data.entries || [];
+  } catch {
+    studyEntries = [];
+  }
+}
+
+function buildSystemInstruction(question) {
+  const custom = localStorage.getItem(STORAGE.instructions) || "";
+  const studyContext = getStudyContext(question);
+
+  return [
+    "You are KinStudy, a friendly study and coding tutor.",
+    "Explain concepts clearly and step by step, using language suitable for a school student.",
+    "For mathematics, show each calculation in readable form and explain what each step means.",
+    "Use ordinary equations such as x = (-b ± √(b² - 4ac)) / 2a; do not hide explanations inside code.",
+    "Use code blocks only when actual programming code is needed.",
+    "When writing code, provide complete runnable examples and explain how to use them.",
+    "Be honest when uncertain. Never claim to have executed code or verified a result unless you actually did.",
+    custom ? `User instructions:\n${custom}` : "",
+    studyContext ? `Relevant study notes (use only when relevant):\n${studyContext}` : ""
+  ].filter(Boolean).join("\n\n");
+}
+
+async function askGemini() {
+  const apiKey = getApiKey();
+
+  if (!apiKey) {
+    throw new Error("Add a Gemini API key in Settings first.");
+  }
+
+  const chat = getCurrentChat();
+  const lastUserIndex = chat.messages.map(item => item.role).lastIndexOf("user");
+
+  if (lastUserIndex < 0) throw new Error("Send a message first.");
+
+  const history = cleanGeminiHistory(chat.messages.slice(0, lastUserIndex + 1));
+
+  if (!history.length || history[history.length - 1].role !== "user") {
+    throw new Error("Could not prepare valid conversation history. Start a new chat.");
+  }
+
+  const latestQuestion = history[history.length - 1].parts
+    .map(part => part.text || "")
+    .join("\n");
+
+  const modelId = ui.model?.value || ONLINE_MODELS[0].id;
+  const systemInstruction = buildSystemInstruction(latestQuestion);
+
+  currentAbortController = new AbortController();
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
+    {
+      method: "POST",
+      signal: currentAbortController.signal,
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey
+      },
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents: history,
+        generationConfig: {
+          maxOutputTokens: 4096
+        }
+      })
+    }
+  );
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const apiMessage = data?.error?.message || `HTTP ${response.status}`;
+    const quotaHint = response.status === 429
+      ? " Check your Gemini API quota, billing, and rate limits."
+      : "";
+
+    throw new Error(`Gemini API ${response.status}: ${apiMessage}${quotaHint}`);
+  }
+
+  const answer = data?.candidates?.[0]?.content?.parts
+    ?.map(part => part.text || "")
+    .join("");
+
+  if (!answer) {
+    const reason = data?.promptFeedback?.blockReason;
+    throw new Error(reason ? `Gemini blocked this prompt: ${reason}` : "Gemini returned an empty response.");
+  }
+
+  return answer;
+}
+
+async function askOffline() {
+  if (!engine || !engineModelId) {
+    throw new Error("Load an offline model before sending messages.");
+  }
+
+  const chat = getCurrentChat();
+  const lastUserIndex = chat.messages.map(item => item.role).lastIndexOf("user");
+
+  if (lastUserIndex < 0) throw new Error("Send a message first.");
+
+  const latestQuestion = chat.messages[lastUserIndex].content || "";
+  const systemInstruction = buildSystemInstruction(latestQuestion);
+
+  const messages = [
+    { role: "system", content: systemInstruction },
+    ...chat.messages.slice(0, lastUserIndex + 1).map(item => ({
+      role: item.role === "user" ? "user" : "assistant",
+      content: String(item.content || "")
+    }))
+  ];
+
+  currentAbortController = new AbortController();
+
+  const response = await engine.chat.completions.create({
+    messages,
+    temperature: 0.7,
+    max_tokens: 2048,
+    stream: false
+  });
+
+  const answer = response?.choices?.[0]?.message?.content;
+
+  if (!answer) throw new Error("Offline model returned an empty response.");
+
+  return answer;
+}
+
+async function sendMessage() {
+  if (busy) {
+    stopRequested = true;
+    currentAbortController?.abort();
+    setStatus("Stopping the current request…");
+    return;
+  }
+
+  const question = ui.input?.value?.trim();
+
+  if (!question) return;
+
+  if (!currentChatId) getCurrentChat();
+
+  appendMessage("user", question);
+  if (ui.input) ui.input.value = "";
+
+  setBusy(true);
+  stopRequested = false;
+  setStatus("Thinking…");
+
+  try {
+    const answer = getMode() === "online"
+      ? await askGemini()
+      : await askOffline();
+
+    if (!stopRequested) {
+      appendMessage("assistant", answer);
+      setStatus(getMode() === "online" ? "Online · Gemini" : "Offline · Model ready");
+    }
+  } catch (error) {
+    if (error.name === "AbortError") {
+      setStatus("Request stopped.");
+    } else {
+      appendMessage("assistant", `Error: ${error.message || String(error)}`);
+      setStatus("Request failed.");
+    }
+  } finally {
+    currentAbortController = null;
+    setBusy(false);
+  }
+}
+
+function createNewChat() {
+  const chat = {
+    id: makeId(),
+    title: "New chat",
+    messages: [],
+    updatedAt: Date.now()
+  };
+
+  chats.unshift(chat);
+  currentChatId = chat.id;
+  saveChats();
+  renderMessages();
+  updateHeader();
+}
+
+function installModeOptions() {
+  if (!ui.mode) return;
+
+  const current = localStorage.getItem(STORAGE.mode) || "offline";
+  const hasOnline = Array.from(ui.mode.options || [])
+    .some(option => option.value.toLowerCase().includes("online"));
+
+  if (!hasOnline) {
+    ui.mode.innerHTML = `
+      <option value="offline">Offline</option>
+      <option value="online">Online · Gemini</option>
+    `;
+  }
+
+  const options = Array.from(ui.mode.options || []);
+  const match = options.find(option => option.value.toLowerCase() === current);
+
+  ui.mode.value = match ? match.value : "offline";
+}
+
+function installModelOptions() {
+  if (!ui.model) return;
+
+  const currentMode = getMode();
+
+  if (currentMode === "online") {
+    const previous = ui.model.value;
+    ui.model.innerHTML = "";
+
+    for (const model of ONLINE_MODELS) {
+      const option = document.createElement("option");
+      option.value = model.id;
+      option.textContent = model.name;
+      ui.model.appendChild(option);
+    }
+
+    ui.model.value = ONLINE_MODELS.some(model => model.id === previous)
+      ? previous
+      : ONLINE_MODELS[0].id;
+
+    ui.model.disabled = false;
+  } else {
+    setModelOptions(modelRegistry.map(item => ({
+      id: item.model_id,
+      name: readableModelName(item.model_id)
+    })));
+  }
+}
+
+function loadSavedSettings() {
+  if (ui.apiKey) {
+    ui.apiKey.value = localStorage.getItem(STORAGE.key) || "";
+  }
+
+  const theme = localStorage.getItem(STORAGE.theme);
+  if (theme) document.documentElement.dataset.theme = theme;
+
+  installModeOptions();
+  installModelOptions();
+}
+
+function installEvents() {
+  if (ui.form) {
+    ui.form.addEventListener("submit", event => {
+      event.preventDefault();
+      sendMessage();
+    });
+  }
+
+  if (ui.send && !ui.form) {
+    ui.send.addEventListener("click", sendMessage);
+  }
+
+  if (ui.input && !ui.form) {
+    ui.input.addEventListener("keydown", event => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+  }
+
+  ui.load?.addEventListener("click", loadOfflineModel);
+  ui.free?.addEventListener("click", freeOfflineModel);
+  ui.newChat?.addEventListener("click", createNewChat);
+
+  ui.mode?.addEventListener("change", () => {
+    localStorage.setItem(STORAGE.mode, getMode());
+
+    if (getMode() === "online") {
+      installModelOptions();
+      setStatus("Online mode selected. Add a valid Gemini API key in Settings.");
+    } else {
+      installModelOptions();
+      setStatus(
+        getWebGPU()
+          ? "Offline mode selected. Load a supported model."
+          : "WebGPU unavailable. Offline mode cannot run on this browser."
+      );
+    }
+  });
+
+  ui.model?.addEventListener("change", () => {
+    localStorage.setItem(STORAGE.model, ui.model.value);
+  });
+
+  ui.apiKey?.addEventListener("change", saveApiKey);
+
+  const saveKeyButton = $("#saveApiKey", "#save-api-key", "#saveSettingsBtn");
+  saveKeyButton?.addEventListener("click", saveApiKey);
+
+  const instructionsInput = $("#customInstructions", "#custom-instructions");
+  if (instructionsInput) {
+    instructionsInput.value = localStorage.getItem(STORAGE.instructions) || "";
+    instructionsInput.addEventListener("change", () => {
+      localStorage.setItem(STORAGE.instructions, instructionsInput.value);
+    });
+  }
+
+  ui.theme?.addEventListener("click", () => {
+    const current = document.documentElement.dataset.theme || "dark";
+    const next = current === "dark" ? "light" : "dark";
+
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem(STORAGE.theme, next);
+  });
+
+  ui.messages?.addEventListener("click", async event => {
+    const button = event.target.closest("[data-copy]");
+    if (!button) return;
+
+    const index = Number(button.dataset.copy);
+    const blocks = Array.from(
+      ui.messages.querySelectorAll(".ks-code pre code")
+    );
+    const code = blocks[index]?.textContent;
+
+    if (code == null) return;
+
+    try {
+      await navigator.clipboard.writeText(code);
+      button.textContent = "Copied!";
+      setTimeout(() => { button.textContent = "Copy code"; }, 1200);
+    } catch {
+      setStatus("Clipboard access unavailable. Select and copy the code manually.");
+    }
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      updateTokenCount();
+    }
+  });
+}
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  try {
+    await navigator.serviceWorker.register("./sw.js", { scope: "./" });
+  } catch (error) {
+    console.warn("Service worker registration failed:", error);
+  }
+}
+
+async function initialize() {
+  ensureCodeStyles();
+
+  currentChatId = localStorage.getItem(STORAGE.current) || null;
+
+  if (!chats.some(chat => chat.id === currentChatId)) {
+    currentChatId = chats[0]?.id || null;
+  }
+
+  loadSavedSettings();
+  installEvents();
+
+  await Promise.all([
+    initializeModelRegistry(),
+    loadStudyData()
+  ]);
+
+  installModelOptions();
+  renderMessages();
+  updateHeader();
+
+  if (!getWebGPU()) {
+    setStatus("WebGPU unavailable. Online mode can still work with an API key.");
+  } else if (getMode() === "offline") {
+    setStatus("WebGPU detected. Select a supported model and press Load model.");
+  }
+
+  await registerServiceWorker();
+}
+
+initialize().catch(error => {
+  console.error("KinStudy initialization failed:", error);
+  setStatus(`Initialization failed: ${error.message || error}`);
+});
