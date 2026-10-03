@@ -283,7 +283,10 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
-    const webllm = window.webllm || await import(WEBLLM_FALLBACK_CDN);
+    const webllm = window.webllm;
+    if (!webllm) {
+      throw new Error('WebLLM library is not ready yet. Please check your internet connection and reload once.');
+    }
 
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
