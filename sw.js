@@ -1,6 +1,6 @@
-const CACHE_NAME = 'study-buddy-cache-v7';
+const CACHE_NAME = 'study-buddy-cache-v8';
 
-const PRECACHE_ASSETS = [
+ const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
