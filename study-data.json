@@ -1,0 +1,17 @@
+{
+  "version": "1.0.0",
+  "entries": [
+    {"subject":"math","topic":"quadratic formula","keywords":["quadratic","roots","equation"],"content":"For ax² + bx + c = 0, where a ≠ 0, the roots are x = (-b ± √(b² - 4ac)) / (2a). The discriminant D = b² - 4ac tells the type of roots: D > 0 two distinct real roots; D = 0 equal real roots; D < 0 no real roots."},
+    {"subject":"math","topic":"pythagorean theorem","keywords":["right triangle","hypotenuse","pythagoras"],"content":"In a right-angled triangle, a² + b² = c², where c is the hypotenuse (the side opposite the right angle)."},
+    {"subject":"math","topic":"circle","keywords":["circle area","circumference","radius"],"content":"Circle area: A = πr². Circumference: C = 2πr = πd. Here r is radius and d is diameter."},
+    {"subject":"math","topic":"percentage","keywords":["percent","percentage"],"content":"Percentage = (part ÷ whole) × 100%. To find p% of a quantity n, calculate (p/100) × n."},
+    {"subject":"math","topic":"speed distance time","keywords":["speed","distance","time"],"content":"Speed = distance ÷ time. Distance = speed × time. Time = distance ÷ speed. Keep units consistent."},
+    {"subject":"math","topic":"simple interest","keywords":["interest","principal","rate"],"content":"Simple Interest (SI) = (P × R × T) / 100, where P is principal, R is annual rate percent, and T is time in years. Amount = P + SI."},
+    {"subject":"science","topic":"newton second law","keywords":["force","mass","acceleration","newton"],"content":"Newton's second law: resultant force F = m × a, where mass m is in kilograms, acceleration a in m/s², and force F in newtons (N)."},
+    {"subject":"science","topic":"density","keywords":["density","mass","volume"],"content":"Density = mass ÷ volume. Common units are kg/m³ or g/cm³."},
+    {"subject":"science","topic":"work and power","keywords":["work","power","joule","watt"],"content":"For a constant force in the direction of motion, work W = F × d. Power P = work ÷ time. Work is measured in joules (J); power in watts (W)."},
+    {"subject":"science","topic":"ohms law","keywords":["electricity","voltage","current","resistance"],"content":"Ohm's law: V = I × R, where voltage V is in volts, current I in amperes, and resistance R in ohms, for an ohmic conductor under constant physical conditions."},
+    {"subject":"science","topic":"photosynthesis","keywords":["plant","glucose","chlorophyll"],"content":"Photosynthesis uses light energy to convert carbon dioxide and water into glucose and oxygen. Word equation: carbon dioxide + water → glucose + oxygen (in the presence of light and chlorophyll)."},
+    {"subject":"science","topic":"wave speed","keywords":["wave","frequency","wavelength"],"content":"Wave speed v = frequency f × wavelength λ, so v = fλ. Frequency is measured in hertz (Hz), wavelength in metres (m), and speed in m/s."}
+  ]
+}
