@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#11141b">
+<meta name="description" content="KinStudy Pro — AI study and coding buddy"><link rel="manifest" href="./manifest.json"><link rel="stylesheet" href="./style.css">
+<title>KinStudy Pro</title>
+</head>
+<body>
+<div class="app-shell">
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><div class="logo">K</div><div><strong>KinStudy Pro</strong><small>AI Study &amp; Code Buddy</small></div></div>
+  <button class="primary wide" id="newChatBtn">＋ New chat</button>
+  <div class="section-label">CHATS</div><div id="chatList" class="chat-list"></div>
+  <div class="sidebar-bottom"><button id="themeBtn" class="secondary wide">☾ Theme</button><button id="settingsBtn" class="secondary wide">⚙ Settings</button></div>
+</aside>
+<main class="main">
+  <header class="topbar"><button id="menuBtn" class="icon-btn mobile-only" aria-label="Open menu">☰</button><div class="conversation-title"><strong id="currentTitle">New chat</strong><small id="modeStatus">Ready</small></div>
+    <div class="top-controls"><label class="sr-only" for="modeSelect">Mode</label><select id="modeSelect"><option value="offline">Offline</option><option value="online">Online · Gemini</option></select><label class="sr-only" for="modelSelect">Model</label><select id="modelSelect"></select></div>
+  </header>
+  <section class="engine-card" id="engineCard"><div class="engine-head"><div><strong id="engineTitle">Offline engine</strong><small id="engineStatus">Checking WebGPU…</small></div><div class="engine-actions"><button class="primary" id="loadBtn">Load model</button><button class="secondary" id="freeBtn">Free RAM</button></div></div><progress id="loadProgress" max="1" value="0"></progress><div id="loadMessage" class="muted">The first load needs internet to download model files.</div><div class="muted storage-note" id="storageNote"></div></section>
+  <section id="messages" class="messages" aria-live="polite"></section>
+  <div class="composer-wrap"><div id="attachmentChip" class="attachment-chip" hidden></div><div class="composer"><button id="attachBtn" class="icon-btn" title="Attach a file">＋</button><input id="fileInput" type="file" hidden multiple accept=".txt,.md,.js,.ts,.html,.css,.json,.py,.java,.c,.cpp,.pdf,.png,.jpg,.jpeg,.webp"><textarea id="messageInput" rows="1" placeholder="Message KinStudy…" aria-label="Message KinStudy"></textarea><button id="sendBtn" class="primary send-btn">Send</button></div><div class="composer-meta"><span id="tokenCount">Tokens: estimate unavailable</span><span>AI can make mistakes. Verify important answers.</span></div></div>
+</main></div>
+<dialog id="settingsDialog"><form method="dialog" class="dialog-inner"><div class="dialog-head"><h2>Settings</h2><button class="icon-btn" value="cancel" aria-label="Close">✕</button></div><label for="apiKeyInput">Gemini API key</label><input id="apiKeyInput" type="password" autocomplete="off" placeholder="Paste API key here"><p class="muted">Stored only in this browser on this device. Never put the key in your GitHub files.</p><label for="instructionsInput">Custom instructions</label><textarea id="instructionsInput" rows="5" placeholder="How should KinStudy respond?"></textarea><div class="dialog-actions"><button id="saveSettingsBtn" class="primary" type="button">Save settings</button><button class="secondary" value="cancel">Close</button></div></form></dialog>
+<script type="module" src="./app.js"></script>
+</body></html>
