@@ -1,203 +1,435 @@
 {
   "version": "1.0.0",
-  "name": "KinStudy Offline Knowledge Base",
-  "description": "Essential Mathematics formulas and Science laws for instant offline study lookup",
+  "name": "KinStudy Offline Study Database",
+  "description": "Verified foundational Mathematics and Science formulas and concepts for instant offline lookup.",
   "entries": [
     {
-      "id": "quadratic-formula",
+      "id": "math-quadratic-formula",
+      "category": "Mathematics",
+      "topic": "Algebra",
       "title": "Quadratic Formula",
-      "category": "Mathematics (Algebra)",
-      "keywords": ["quadratic", "quadratic formula", "roots", "ax2", "parabola", "discriminant"],
-      "formula": "x = (-b ± √(b² - 4ac)) / (2a)",
-      "latex": "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
-      "explanation": "Finds the solutions (roots or x-intercepts) for any quadratic equation of the form ax² + bx + c = 0.",
-      "analogy": "Think of the discriminant (b² - 4ac) as a traffic signal: positive means two real crossroads (2 real solutions), zero means exactly one touchpoint, and negative means you're flying above the ground with imaginary numbers!",
-      "stepByStep": [
-        "Write the equation in standard form: ax² + bx + c = 0",
-        "Identify coefficients a, b, and c",
-        "Compute the discriminant: D = b² - 4ac",
-        "Substitute into x = (-b ± √D) / (2a)",
-        "Calculate both values (+ and -)"
+      "keywords": [
+        "quadratic formula",
+        "quadratic equation",
+        "ax2",
+        "roots",
+        "algebra"
       ],
-      "example": "For x² - 5x + 6 = 0: a=1, b=-5, c=6. D = (-5)² - 4(1)(6) = 25 - 24 = 1. x = (5 ± √1) / 2 = (5 ± 1)/2 => x = 3 or x = 2."
+      "question": "What is the quadratic formula?",
+      "answer": "For an equation ax² + bx + c = 0, where a ≠ 0, the solutions are x = (-b ± √(b² - 4ac)) / (2a). The expression b² - 4ac is called the discriminant."
     },
     {
-      "id": "pythagorean-theorem",
+      "id": "math-pythagorean-theorem",
+      "category": "Mathematics",
+      "topic": "Geometry",
       "title": "Pythagorean Theorem",
-      "category": "Mathematics (Geometry)",
-      "keywords": ["pythagoras", "pythagorean", "hypotenuse", "right triangle", "triangle sides"],
-      "formula": "a² + b² = c²  (c = √(a² + b²))",
-      "latex": "a^2 + b^2 = c^2",
-      "explanation": "In any right-angled triangle, the square of the hypotenuse (the longest side opposite the right angle) is equal to the sum of the squares of the other two sides.",
-      "analogy": "Imagine walking across a rectangular park diagonally instead of taking the two perpendicular sidewalks. The square of your diagonal shortcut equals the sum of the squares of the sidewalk paths!",
-      "stepByStep": [
-        "Verify the triangle has a 90-degree right angle",
-        "Identify legs 'a' and 'b', and hypotenuse 'c' (opposite the 90° angle)",
-        "Square both legs: a² and b²",
-        "Add the squares: a² + b²",
-        "Take the square root to find c: c = √(a² + b²)"
+      "keywords": [
+        "pythagorean theorem",
+        "right triangle",
+        "hypotenuse",
+        "triangle"
       ],
-      "example": "A triangle with legs 3 cm and 4 cm: c² = 3² + 4² = 9 + 16 = 25 => c = √25 = 5 cm."
+      "question": "What is the Pythagorean theorem?",
+      "answer": "For a right-angled triangle, a² + b² = c², where a and b are the two perpendicular sides and c is the hypotenuse."
     },
     {
-      "id": "slope-intercept-form",
-      "title": "Slope-Intercept Line Equation",
-      "category": "Mathematics (Coordinate Geometry)",
-      "keywords": ["slope", "slope intercept", "linear equation", "gradient", "y = mx + b", "y=mx+c"],
-      "formula": "y = mx + b  (where m = (y₂ - y₁) / (x₂ - x₁))",
-      "latex": "y = mx + b",
-      "explanation": "Represents a straight line on the Cartesian plane where 'm' is the steepness (slope) and 'b' is where the line crosses the vertical y-axis.",
-      "analogy": "Think of 'b' as your starting altitude at ground zero (x=0), and 'm' as how many meters you climb for every step forward you take.",
-      "stepByStep": [
-        "Find the slope m = (y₂ - y₁) / (x₂ - x₁)",
-        "Locate where the line crosses the y-axis to find b",
-        "Combine into y = mx + b to predict any y for any given x"
+      "id": "math-circle-area",
+      "category": "Mathematics",
+      "topic": "Geometry",
+      "title": "Area of a Circle",
+      "keywords": [
+        "circle area",
+        "area circle",
+        "pi r squared",
+        "geometry"
       ],
-      "example": "Line passing through (0, 3) with a slope of 2: y = 2x + 3. At x = 4, y = 2(4) + 3 = 11."
+      "question": "What is the area of a circle?",
+      "answer": "The area of a circle is A = πr², where r is the radius."
     },
     {
-      "id": "circle-geometry",
-      "title": "Circle Area and Circumference",
-      "category": "Mathematics (Geometry)",
-      "keywords": ["circle", "area of circle", "circumference", "radius", "diameter", "pi"],
-      "formula": "Area = πr² | Circumference = 2πr = πd",
-      "latex": "A = \\pi r^2, \\quad C = 2\\pi r",
-      "explanation": "Area calculates the total 2D surface inside a circle; Circumference measures the perimeter or distance around the outer boundary.",
-      "analogy": "Circumference is the crust around the outer edge of your pizza pie; Area is all the delicious melted cheese and toppings spread across the top!",
-      "stepByStep": [
-        "Measure the radius 'r' (distance from center to edge; radius = diameter / 2)",
-        "For circumference: multiply radius by 2π (approx 6.283)",
-        "For area: square the radius (r × r) and multiply by π (approx 3.14159)"
+      "id": "math-circle-circumference",
+      "category": "Mathematics",
+      "topic": "Geometry",
+      "title": "Circumference of a Circle",
+      "keywords": [
+        "circumference",
+        "circle perimeter",
+        "2 pi r",
+        "geometry"
       ],
-      "example": "Radius = 7 cm: Circumference = 2 × (22/7) × 7 = 44 cm. Area = (22/7) × 7² = 154 cm²."
+      "question": "What is the circumference of a circle?",
+      "answer": "The circumference of a circle is C = 2πr, where r is the radius. It can also be written as C = πd, where d is the diameter."
     },
     {
-      "id": "newtons-second-law",
-      "title": "Newton's Second Law of Motion",
-      "category": "Science (Physics)",
-      "keywords": ["newton", "force", "mass", "acceleration", "f=ma", "motion"],
-      "formula": "F = m · a  (Force = Mass × Acceleration)",
-      "latex": "F = m \\cdot a",
-      "explanation": "The acceleration of an object is directly proportional to the net force acting upon it and inversely proportional to its mass. Force is measured in Newtons (N).",
-      "analogy": "Pushing an empty shopping cart (low mass) makes it accelerate quickly with a light shove. Pushing a cart loaded with 100 books requires massive force just to get it moving at the same speed!",
-      "stepByStep": [
-        "Identify the mass of the object in kilograms (kg)",
-        "Measure or define acceleration in meters per second squared (m/s²)",
-        "Multiply mass by acceleration: F = m × a (result in Newtons)"
+      "id": "math-rectangle-area",
+      "category": "Mathematics",
+      "topic": "Geometry",
+      "title": "Area of a Rectangle",
+      "keywords": [
+        "rectangle area",
+        "area rectangle",
+        "length width"
       ],
-      "example": "A 1000 kg car accelerates at 3 m/s²: Net Force = 1000 kg × 3 m/s² = 3,000 Newtons."
+      "question": "What is the area of a rectangle?",
+      "answer": "The area of a rectangle is A = length × width."
     },
     {
-      "id": "kinetic-and-potential-energy",
-      "title": "Kinetic & Gravitational Potential Energy",
-      "category": "Science (Physics)",
-      "keywords": ["kinetic energy", "potential energy", "energy conservation", "ke", "pe", "gravity"],
-      "formula": "KE = ½ m v²  |  PE = m · g · h",
-      "latex": "KE = \\frac{1}{2}mv^2, \\quad PE = mgh",
-      "explanation": "Potential energy is stored energy due to height (position in a gravitational field); Kinetic energy is the energy an object possesses due to its motion.",
-      "analogy": "At the very top of a roller coaster drop, you are packed with maximum Potential Energy. As you plummet down, that stored energy transforms directly into roaring Kinetic speed!",
-      "stepByStep": [
-        "For Potential Energy: PE = mass (kg) × gravity (9.8 m/s²) × height (meters)",
-        "For Kinetic Energy: square velocity (v²), multiply by mass, divide by 2",
-        "Total Mechanical Energy is conserved: Total = KE + PE"
+      "id": "math-triangle-area",
+      "category": "Mathematics",
+      "topic": "Geometry",
+      "title": "Area of a Triangle",
+      "keywords": [
+        "triangle area",
+        "area triangle",
+        "base height"
       ],
-      "example": "A 2 kg ball lifted 5 meters high: PE = 2 × 9.8 × 5 = 98 Joules. When it hits the ground, that 98 J has converted into KE."
+      "question": "What is the area of a triangle?",
+      "answer": "The area of a triangle is A = ½ × base × height."
     },
     {
-      "id": "ohms-law",
-      "title": "Ohm's Law of Electricity",
-      "category": "Science (Physics / Electronics)",
-      "keywords": ["ohms law", "voltage", "current", "resistance", "amperes", "volts", "v=ir"],
-      "formula": "V = I · R  (Voltage = Current × Resistance)",
-      "latex": "V = I \\cdot R",
-      "explanation": "States that the electrical current flowing through a conductor between two points is directly proportional to the voltage across the two points and inversely proportional to resistance.",
-      "analogy": "Imagine water flowing through a garden pipe: Voltage is the water pressure pushing from the tap, Current is the volume of water flowing per second, and Resistance is someone squeezing the hose!",
-      "stepByStep": [
-        "Voltage (V) in Volts",
-        "Current (I) in Amperes",
-        "Resistance (R) in Ohms (Ω)",
-        "Rearrange as needed: V = I·R, I = V / R, or R = V / I"
+      "id": "math-percentage",
+      "category": "Mathematics",
+      "topic": "Arithmetic",
+      "title": "Percentage",
+      "keywords": [
+        "percentage",
+        "percent",
+        "percentage formula",
+        "arithmetic"
       ],
-      "example": "A 12V battery connected to a 4Ω resistor: Current I = 12 / 4 = 3 Amperes."
+      "question": "How do you calculate a percentage?",
+      "answer": "Percentage = (part ÷ whole) × 100."
     },
     {
-      "id": "photosynthesis",
-      "title": "Chemical Equation of Photosynthesis",
-      "category": "Science (Biology & Chemistry)",
-      "keywords": ["photosynthesis", "glucose", "chlorophyll", "plants", "carbon dioxide", "oxygen"],
-      "formula": "6CO₂ + 6H₂O + Sunlight → C₆H₁₂O₆ + 6O₂",
-      "latex": "6\\text{CO}_2 + 6\\text{H}_2\\text{O} + \\text{light} \\rightarrow \\text{C}_6\\text{H}_{12}\\text{O}_6 + 6\\text{O}_2",
-      "explanation": "The process by which green plants and certain organisms transform light energy into chemical energy, converting carbon dioxide and water into glucose sugar and releasing oxygen gas.",
-      "analogy": "Plants are nature's solar-powered bakeries! They take in stale air (CO₂) and water from their roots, use sunlight as the oven's power, and bake sweet sugar (glucose) while giving us clean oxygen to breathe!",
-      "stepByStep": [
-        "Reactants: 6 molecules of Carbon Dioxide (6CO₂) + 6 molecules of Water (6H₂O)",
-        "Energy Driver: Photons captured by green chlorophyll pigment",
-        "Products: 1 molecule of Glucose (C₆H₁₂O₆) + 6 molecules of Oxygen (6O₂)"
+      "id": "math-simple-interest",
+      "category": "Mathematics",
+      "topic": "Arithmetic",
+      "title": "Simple Interest",
+      "keywords": [
+        "simple interest",
+        "interest",
+        "principal",
+        "rate",
+        "time"
       ],
-      "example": "Without this equation, Earth's atmospheric oxygen would deplete and the food chain's primary producers would vanish."
+      "question": "What is the simple interest formula?",
+      "answer": "Simple Interest = (P × R × T) / 100, where P is principal, R is annual rate of interest in percent, and T is time in years."
     },
     {
-      "id": "ideal-gas-law",
-      "title": "Ideal Gas Law",
-      "category": "Science (Chemistry & Physics)",
-      "keywords": ["ideal gas", "pv=nrt", "pressure", "temperature", "kelvin", "moles"],
-      "formula": "P · V = n · R · T",
-      "latex": "PV = nRT",
-      "explanation": "Relates pressure (P), volume (V), amount of substance in moles (n), the ideal gas constant (R), and absolute temperature in Kelvin (T).",
-      "analogy": "Think of gas molecules as hyperactive bouncing balls in a box. If you shrink the box (lower V) or heat up the room (higher T), they slam against the walls much faster and harder, skyrocketing the pressure (P)!",
-      "stepByStep": [
-        "Always convert Temperature to Kelvin: K = °C + 273.15",
-        "Use universal gas constant R = 8.314 J/(mol·K) or 0.0821 L·atm/(mol·K)",
-        "Isolate target variable: e.g., P = (nRT) / V"
+      "id": "math-speed-distance-time",
+      "category": "Mathematics",
+      "topic": "Arithmetic",
+      "title": "Speed, Distance and Time",
+      "keywords": [
+        "speed",
+        "distance",
+        "time",
+        "motion formula"
       ],
-      "example": "1 mole of gas at STP (0°C = 273.15 K, 1 atm pressure) occupies exactly 22.4 Liters of volume."
+      "question": "What are the speed distance time formulas?",
+      "answer": "Speed = Distance ÷ Time. Distance = Speed × Time. Time = Distance ÷ Speed."
     },
     {
-      "id": "density-formula",
-      "title": "Density Formula",
-      "category": "Science (Physics & Materials)",
-      "keywords": ["density", "mass over volume", "buoyancy", "float", "sink", "rho"],
-      "formula": "ρ = m / V  (Density = Mass ÷ Volume)",
-      "latex": "\\rho = \\frac{m}{V}",
-      "explanation": "A measure of how much matter is packed into a given unit of space. Objects with density less than water (1.0 g/cm³) float, while denser objects sink.",
-      "analogy": "A shoebox packed with feathers and an identical shoebox packed with solid lead bricks have the exact same volume, but the lead box has vastly higher density!",
-      "stepByStep": [
-        "Measure the mass 'm' using a digital balance (in grams or kilograms)",
-        "Measure the volume 'V' using geometry or water displacement (cm³ or m³)",
-        "Divide mass by volume: ρ = m / V"
+      "id": "math-average",
+      "category": "Mathematics",
+      "topic": "Statistics",
+      "title": "Arithmetic Mean",
+      "keywords": [
+        "average",
+        "mean",
+        "arithmetic mean",
+        "statistics"
       ],
-      "example": "A metal cube with mass 270g and volume 100cm³: Density = 270 / 100 = 2.7 g/cm³ (this matches the density of Aluminum!)."
+      "question": "How do you calculate the average?",
+      "answer": "Arithmetic mean = Sum of all values ÷ Number of values."
     },
     {
-      "id": "speed-velocity-acceleration",
-      "title": "Kinematics: Velocity & Acceleration",
-      "category": "Science (Physics)",
-      "keywords": ["speed", "velocity", "acceleration", "distance", "time", "motion"],
-      "formula": "v = d / t  |  a = (v_final - v_initial) / t",
-      "latex": "v = \\frac{d}{t}, \\quad a = \\frac{\\Delta v}{\\Delta t}",
-      "explanation": "Velocity is the rate of change of position with direction; Acceleration is the rate of change of velocity over time.",
-      "analogy": "Speed is reading 60 mph on your speedometer. Velocity is 60 mph heading strictly North. Acceleration is slamming the gas pedal to surge from 0 to 60 mph in 3 seconds!",
-      "stepByStep": [
-        "Average Speed: Divide total distance traveled by total time taken",
-        "Acceleration: Subtract initial velocity from final velocity and divide by elapsed time"
+      "id": "math-laws-exponents",
+      "category": "Mathematics",
+      "topic": "Algebra",
+      "title": "Laws of Exponents",
+      "keywords": [
+        "exponents",
+        "powers",
+        "indices",
+        "laws of indices"
       ],
-      "example": "A cyclist speeds up from 2 m/s to 8 m/s in 3 seconds: Acceleration = (8 - 2) / 3 = 2 m/s²."
+      "question": "What are common laws of exponents?",
+      "answer": "For suitable nonzero bases: aᵐ × aⁿ = aᵐ⁺ⁿ; aᵐ ÷ aⁿ = aᵐ⁻ⁿ; (aᵐ)ⁿ = aᵐⁿ; a⁰ = 1."
     },
     {
-      "id": "trigonometric-ratios",
-      "title": "Trigonometric Ratios (SOH CAH TOA)",
-      "category": "Mathematics (Trigonometry)",
-      "keywords": ["trig", "trigonometry", "sin", "cos", "tan", "soh cah toa", "sine", "cosine", "tangent"],
-      "formula": "sin(θ) = Opp/Hyp | cos(θ) = Adj/Hyp | tan(θ) = Opp/Adj",
-      "latex": "\\sin(\\theta) = \\frac{\\text{Opp}}{\\text{Hyp}}, \\; \\cos(\\theta) = \\frac{\\text{Adj}}{\\text{Hyp}}, \\; \\tan(\\theta) = \\frac{\\text{Opp}}{\\text{Adj}}",
-      "explanation": "The fundamental ratios connecting the angles of a right triangle to the lengths of its sides.",
-      "analogy": "Remember the classic mnemonic: Some Old Horses Can Always Hear Their Owners Approach (SOH CAH TOA)!",
-      "stepByStep": [
-        "Identify the reference angle θ",
-        "Label the sides: Hypotenuse (longest), Opposite (facing θ), Adjacent (next to θ)",
-        "Pick ratio based on what you have and what you need to solve"
+      "id": "math-distance-coordinate",
+      "category": "Mathematics",
+      "topic": "Coordinate Geometry",
+      "title": "Distance Between Two Points",
+      "keywords": [
+        "distance formula",
+        "coordinate geometry",
+        "two points",
+        "x1",
+        "y1",
+        "x2",
+        "y2"
       ],
-      "example": "In a 3-4-5 right triangle with angle θ facing the 3 side: sin(θ) = 3/5 = 0.6, cos(θ) = 4/5 = 0.8, tan(θ) = 3/4 = 0.75."
+      "question": "What is the distance formula between two points?",
+      "answer": "For points (x₁, y₁) and (x₂, y₂), distance = √[(x₂ - x₁)² + (y₂ - y₁)²]."
+    },
+    {
+      "id": "science-newtons-second-law",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Newton's Second Law",
+      "keywords": [
+        "newton second law",
+        "force",
+        "mass",
+        "acceleration",
+        "f ma"
+      ],
+      "question": "What is Newton's second law?",
+      "answer": "Newton's second law is commonly written as F = ma, where F is net force, m is mass, and a is acceleration."
+    },
+    {
+      "id": "science-weight",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Weight",
+      "keywords": [
+        "weight",
+        "mass",
+        "gravity",
+        "physics"
+      ],
+      "question": "What is the formula for weight?",
+      "answer": "Weight is the gravitational force acting on an object. Near Earth's surface, W = mg, where m is mass and g is gravitational acceleration."
+    },
+    {
+      "id": "science-density",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Density",
+      "keywords": [
+        "density",
+        "mass volume",
+        "density formula",
+        "physics"
+      ],
+      "question": "What is the density formula?",
+      "answer": "Density = Mass ÷ Volume. In symbols, ρ = m/V."
+    },
+    {
+      "id": "science-work",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Mechanical Work",
+      "keywords": [
+        "work",
+        "force displacement",
+        "physics work"
+      ],
+      "question": "What is the formula for work?",
+      "answer": "When a constant force acts in the direction of displacement, work = force × displacement. More generally, W = Fd cosθ, where θ is the angle between force and displacement."
+    },
+    {
+      "id": "science-power",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Power",
+      "keywords": [
+        "power",
+        "work time",
+        "energy time",
+        "physics"
+      ],
+      "question": "What is the formula for power?",
+      "answer": "Average power = Work ÷ Time. It is also the rate at which energy is transferred or work is done."
+    },
+    {
+      "id": "science-kinetic-energy",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Kinetic Energy",
+      "keywords": [
+        "kinetic energy",
+        "moving object",
+        "energy",
+        "half mv squared"
+      ],
+      "question": "What is kinetic energy?",
+      "answer": "The kinetic energy of an object of mass m moving at speed v is KE = ½mv²."
+    },
+    {
+      "id": "science-potential-energy",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Gravitational Potential Energy",
+      "keywords": [
+        "potential energy",
+        "gravitational potential energy",
+        "mgh",
+        "height"
+      ],
+      "question": "What is gravitational potential energy near Earth's surface?",
+      "answer": "Near Earth's surface, gravitational potential energy relative to a chosen reference level is approximately PE = mgh, where m is mass, g is gravitational acceleration, and h is height above the reference level."
+    },
+    {
+      "id": "science-ohms-law",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Ohm's Law",
+      "keywords": [
+        "ohms law",
+        "ohm law",
+        "voltage",
+        "current",
+        "resistance",
+        "electricity"
+      ],
+      "question": "What is Ohm's law?",
+      "answer": "For an ohmic conductor under appropriate constant physical conditions, V = IR, where V is potential difference, I is current, and R is resistance."
+    },
+    {
+      "id": "science-electric-power",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Electrical Power",
+      "keywords": [
+        "electrical power",
+        "electric power",
+        "voltage current",
+        "watts"
+      ],
+      "question": "What is electrical power?",
+      "answer": "Electrical power can be calculated as P = VI. Using Ohm's law, equivalent forms include P = I²R and P = V²/R when the relationships apply."
+    },
+    {
+      "id": "science-wave-speed",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Wave Speed",
+      "keywords": [
+        "wave speed",
+        "frequency",
+        "wavelength",
+        "waves"
+      ],
+      "question": "What is the wave speed formula?",
+      "answer": "Wave speed is v = fλ, where v is wave speed, f is frequency, and λ is wavelength."
+    },
+    {
+      "id": "science-newtons-first-law",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Newton's First Law",
+      "keywords": [
+        "newton first law",
+        "inertia",
+        "motion",
+        "force"
+      ],
+      "question": "What is Newton's first law?",
+      "answer": "An object remains at rest or continues moving with constant velocity in a straight line unless acted upon by a net external force."
+    },
+    {
+      "id": "science-newtons-third-law",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Newton's Third Law",
+      "keywords": [
+        "newton third law",
+        "action reaction",
+        "force pairs"
+      ],
+      "question": "What is Newton's third law?",
+      "answer": "When two objects interact, they exert forces on each other that are equal in magnitude and opposite in direction."
+    },
+    {
+      "id": "science-conservation-energy",
+      "category": "Science",
+      "topic": "Physics",
+      "title": "Conservation of Energy",
+      "keywords": [
+        "conservation energy",
+        "energy cannot be created",
+        "energy transformation"
+      ],
+      "question": "What is the law of conservation of energy?",
+      "answer": "Energy cannot be created or destroyed in an isolated system; it can be transferred between objects or transformed from one form to another."
+    },
+    {
+      "id": "science-photosynthesis",
+      "category": "Science",
+      "topic": "Biology",
+      "title": "Photosynthesis",
+      "keywords": [
+        "photosynthesis",
+        "plants",
+        "glucose",
+        "carbon dioxide",
+        "oxygen",
+        "chlorophyll"
+      ],
+      "question": "What is photosynthesis?",
+      "answer": "Photosynthesis is the process by which photosynthetic organisms use light energy to convert carbon dioxide and water into energy-rich organic compounds such as glucose, releasing oxygen in oxygenic photosynthesis. A simplified overall equation is 6CO₂ + 6H₂O → C₆H₁₂O₆ + 6O₂, with light energy involved."
+    },
+    {
+      "id": "science-respiration",
+      "category": "Science",
+      "topic": "Biology",
+      "title": "Aerobic Cellular Respiration",
+      "keywords": [
+        "cellular respiration",
+        "respiration",
+        "glucose",
+        "oxygen",
+        "ATP"
+      ],
+      "question": "What is aerobic cellular respiration?",
+      "answer": "Aerobic cellular respiration is a set of metabolic reactions in which cells extract energy from organic molecules such as glucose, using oxygen as the final electron acceptor in the main aerobic pathway and producing ATP, carbon dioxide, and water."
+    },
+    {
+      "id": "science-atom",
+      "category": "Science",
+      "topic": "Chemistry",
+      "title": "Basic Structure of an Atom",
+      "keywords": [
+        "atom",
+        "proton",
+        "neutron",
+        "electron",
+        "atomic structure"
+      ],
+      "question": "What are the main particles in an atom?",
+      "answer": "An atom contains a nucleus made primarily of protons and neutrons, with electrons occupying regions around the nucleus. Protons have positive electric charge, electrons have negative electric charge, and neutrons have no net electric charge."
+    },
+    {
+      "id": "science-ph-scale",
+      "category": "Science",
+      "topic": "Chemistry",
+      "title": "pH Scale",
+      "keywords": [
+        "ph",
+        "pH scale",
+        "acid",
+        "base",
+        "acidity"
+      ],
+      "question": "What does the pH scale measure?",
+      "answer": "pH is a measure related to the activity or concentration of hydrogen ions in an aqueous solution. At 25°C, a pH below 7 is acidic, pH 7 is neutral for pure water under standard conditions, and pH above 7 is basic."
+    },
+    {
+      "id": "science-law-conservation-mass",
+      "category": "Science",
+      "topic": "Chemistry",
+      "title": "Conservation of Mass",
+      "keywords": [
+        "conservation mass",
+        "mass",
+        "chemical reaction",
+        "chemistry"
+      ],
+      "question": "What is conservation of mass in a chemical reaction?",
+      "answer": "In a closed system undergoing an ordinary chemical reaction, the total mass of the reactants equals the total mass of the products."
     }
   ]
 }
