@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinstudy-offline-v17';
+const CACHE_NAME = 'kinstudy-offline-v18';
 
 const PRECACHE_ASSETS = [
   './',
@@ -33,7 +33,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Hugging Face weights and API keys are not intercepted by the service worker
+  // Hugging Face weights and API keys are fetched directly without service worker interception
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
