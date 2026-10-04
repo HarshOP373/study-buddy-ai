@@ -1,9 +1,7 @@
 /**
  * KinStudy Pro - iPad Dual Engine Architecture
- * Non-Blocking UI, Thread-Yielding Loader, Resilient WebGPU Execution
+ * Offline-First: Zero top-level network imports for instant offline rendering.
  */
-
-import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 
 // ============================================================================
 // 1. Configuration & Constants
@@ -29,6 +27,8 @@ const STORAGE_KEYS = {
   OFFLINE_MODEL: 'kinstudy_v3_offline_model'
 };
 
+const WEBLLM_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+
 // ============================================================================
 // 2. Application State
 // ============================================================================
@@ -46,6 +46,7 @@ const state = {
 
   // Engine state
   webllmEngine: null,
+  webllmModule: null,
   loadedModelId: null,
   isModelLoading: false,
   isModelReady: false,
@@ -289,11 +290,16 @@ async function loadOfflineModel(onProgress) {
   await yieldToMainThread();
 
   try {
+    // Dynamic import runs only on-demand when user explicitly asks for offline model
+    if (!state.webllmModule) {
+      state.webllmModule = await import(WEBLLM_CDN);
+    }
+    const webllm = state.webllmModule;
+
     let lastRenderUpdate = 0;
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         const now = performance.now();
-        // Throttle UI repaints to prevent locking iPad touch listeners
         if (now - lastRenderUpdate > 80 || report.progress === 1) {
           lastRenderUpdate = now;
           if (onProgress) onProgress(report);
@@ -306,7 +312,6 @@ async function loadOfflineModel(onProgress) {
     state.isModelReady = true;
     state.isModelLoading = false;
     
-    // Release thread so Safari re-attaches gestures and clicks immediately
     await yieldToMainThread();
     updateOfflineBarUI();
     return engine;
@@ -383,7 +388,6 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
         fullReply += delta;
         tokenCount++;
         onChunk(fullReply);
-        // Let Safari repaint and keep the stop button responsive
         if (tokenCount % 4 === 0) {
           await yieldToMainThread();
         }
@@ -642,15 +646,22 @@ function updateOfflineBarUI() {
   const onlineSelect = document.getElementById('online-model-select');
   const offlineSelect = document.getElementById('offline-model-select');
   const modelTag = document.getElementById('current-model-tag');
+  const modeSelect = document.getElementById('mode-select');
   const chatInput = document.getElementById('chat-input');
   const sendBtn = document.getElementById('btn-send');
 
   if (!bar) return;
 
+  // Sync mode dropdown in top bar
+  if (modeSelect) modeSelect.value = state.currentMode;
+
   if (state.currentMode === 'offline') {
     bar.classList.add('active');
     if (onlineSelect) onlineSelect.style.display = 'none';
-    if (offlineSelect) offlineSelect.style.display = 'block';
+    if (offlineSelect) {
+      offlineSelect.style.display = 'block';
+      offlineSelect.value = state.offlineModel;
+    }
     if (footerMode) footerMode.innerHTML = '<span class="dot offline"></span> Offline WebGPU';
 
     let shortOfflineName = "Qwen2.5-0.5B (Light)";
@@ -676,7 +687,6 @@ function updateOfflineBarUI() {
       btnUnload.style.display = 'block';
       progressWrap.style.display = 'none';
 
-      // Always restore input responsiveness when model is ready
       if (!state.isGenerating) {
         if (chatInput) chatInput.disabled = false;
         if (sendBtn) sendBtn.disabled = false;
@@ -697,7 +707,10 @@ function updateOfflineBarUI() {
     }
   } else {
     bar.classList.remove('active');
-    if (onlineSelect) onlineSelect.style.display = 'block';
+    if (onlineSelect) {
+      onlineSelect.style.display = 'block';
+      onlineSelect.value = state.onlineModel;
+    }
     if (offlineSelect) offlineSelect.style.display = 'none';
     if (footerMode) footerMode.innerHTML = '<span class="dot online"></span> Online Mode';
     if (modelTag) modelTag.textContent = state.onlineModel;
@@ -917,10 +930,10 @@ function exportCurrentChatToFiles() {
 // 8. Bootstrap & Event Listeners
 // ============================================================================
 
-window.addEventListener('DOMContentLoaded', async () => {
+function initKinStudyApp() {
   loadPersistedState();
   applyTheme(state.theme);
-  await fetchKnowledgeBase();
+  fetchKnowledgeBase();
 
   const modeSelect = document.getElementById('mode-select');
   if (modeSelect) {
@@ -1069,4 +1082,10 @@ window.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initKinStudyApp);
+} else {
+  initKinStudyApp();
+}
