@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinstudy-offline-v20';
+const CACHE_NAME = 'kinstudy-offline-v25';
 
 const PRECACHE_ASSETS = [
   './',
@@ -7,13 +7,20 @@ const PRECACHE_ASSETS = [
   './app.js',
   './study-data.json',
   './manifest.json',
-  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm'
+  '[https://esm.sh/@mlc-ai/web-llm@0.2.78?bundle](https://esm.sh/@mlc-ai/web-llm@0.2.78?bundle)'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS);
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // Safe sequential cache loop: never aborts installation if an item is slow
+      for (const asset of PRECACHE_ASSETS) {
+        try {
+          await cache.add(asset);
+        } catch (e) {
+          console.warn('[SW Precache Note]:', asset, e);
+        }
+      }
     })
   );
   self.skipWaiting();
@@ -33,17 +40,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Hugging Face weights and API keys are fetched directly without service worker interception
+  // Hugging Face weights and LFS files are handled directly by WebLLM IndexedDB cache
   if (
     url.hostname.includes('huggingface.co') ||
-    url.hostname.includes('cdn-lfs') ||
-    url.hostname.includes('googleapis.com')
+    url.hostname.includes('cdn-lfs')
   ) {
     return;
   }
 
-  // Auto-cache all WebLLM CDN sub-chunks dynamically so offline never fails
-  if (url.hostname.includes('jsdelivr.net') || url.hostname.includes('esm.run')) {
+  // Automatic runtime cache for any bundle or script request
+  if (url.hostname.includes('esm.sh') || url.hostname.includes('jsdelivr.net')) {
     event.respondWith(
       caches.open(CACHE_NAME).then(async (cache) => {
         const cached = await cache.match(event.request);
@@ -55,7 +61,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         } catch (e) {
-          return cached || new Response('Offline script missing', { status: 404 });
+          return cached || new Response('Offline resource missing', { status: 404 });
         }
       })
     );
