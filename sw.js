@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinstudy-offline-v15';
+const CACHE_NAME = 'kinstudy-offline-v16';
 
 const PRECACHE_ASSETS = [
   './',
