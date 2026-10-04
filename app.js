@@ -3,6 +3,9 @@
  * Natural Human Conversation, Safe WebGPU Reconnect, Code & Math Containers
  */
 
+// Import WebLLM statically as an ES module so Safari never fails dynamic evaluation
+import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+
 // ============================================================================
 // 1. Configuration & Constants
 // ============================================================================
@@ -27,8 +30,6 @@ const STORAGE_KEYS = {
   OFFLINE_MODEL: 'kinstudy_v3_offline_model'
 };
 
-const WEBLLM_CDN = "[https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm](https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm)";
-
 // ============================================================================
 // 2. Application State
 // ============================================================================
@@ -46,7 +47,6 @@ const state = {
 
   // Engine state
   webllmEngine: null,
-  webllmModule: null,
   loadedModelId: null,
   isModelLoading: false,
   isModelReady: false,
@@ -164,7 +164,7 @@ function findRelevantStudyContext(userQuery) {
 }
 
 // ============================================================================
-// 5. Dual Engine Core: Gemini Online & WebLLM Offline (With Auto-Heal)
+// 5. Dual Engine Core: Gemini Online & WebLLM Offline
 // ============================================================================
 
 async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
@@ -186,7 +186,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
     contents: cleanHistory,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4078
+      maxOutputTokens: 8192 // Extended token limit for complete code generation
     }
   };
 
@@ -200,7 +200,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
 
   for (const model of modelsToTry) {
     try {
-      const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
       
       const response = await fetch(url, {
         method: 'POST',
@@ -286,11 +286,6 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
-    if (!state.webllmModule) {
-      state.webllmModule = await import(WEBLLM_CDN);
-    }
-    const webllm = state.webllmModule;
-
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -334,14 +329,20 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
 
+  // Prevents "NDArray has already been disposed" by resetting temporary tensor memory
+  try {
+    await state.webllmEngine.resetChat(false);
+  } catch (e) {
+    console.warn('[WebLLM] Cache reset:', e);
+  }
+
   const formatted = [];
 
-  // Pass concise human persona
   if (systemInstruction && systemInstruction.trim().length > 0) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Keep only the current user prompt + immediate previous turn to prevent Safari memory overflow
+  // Pass current prompt and the preceding turn to keep context manageable in WebGPU
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -357,7 +358,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
       messages: formatted,
       temperature: 0.6,
-      max_tokens: 1536,
+      max_tokens: 2048, // Increased token limit for complete code generation
       stream: true
     });
 
@@ -378,13 +379,12 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     return fullReply || '(Stopped)';
   } catch (err) {
     const errMsg = String(err.message || err);
-    // Auto-heal if TVM/WebGPU was disposed in background
     if (errMsg.includes('disposed') || errMsg.includes('NDArray') || errMsg.includes('device')) {
-      console.warn('[WebLLM] Recovering from disposed WebGPU context...');
+      console.warn('[WebLLM] Auto-recovering disposed WebGPU context...');
       state.webllmEngine = null;
       state.isModelReady = false;
-      await loadOfflineModel(); // Auto re-init
-      throw new Error('Engine memory refreshed. Please tap Send again!');
+      await loadOfflineModel();
+      throw new Error('Memory cleared. Please tap Send once more!');
     }
     throw err;
   }
@@ -438,9 +438,6 @@ function renderChatList() {
   });
 }
 
-/**
- * Parses markdown into ChatGPT-style code blocks and distinct math containers
- */
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
@@ -771,7 +768,7 @@ async function handleSendMessage() {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
+      assistantMsg.content = '⚠️️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
     } else {
       assistantMsg.content = `⚠ **Error:** ${err.message || err}`;
     }
