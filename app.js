@@ -1,6 +1,6 @@
 /**
  * KinStudy Pro - iPad Dual Engine Architecture
- * Offline-First: Zero top-level network imports for instant offline rendering.
+ * Smart Rolling Memory, 2048+ Tokens, Safe WebGPU Tensor Reset & Code Containers
  */
 
 // ============================================================================
@@ -58,7 +58,6 @@ const state = {
   knowledgeBase: []
 };
 
-// Helper: Yield back to Safari's main thread so UI never freezes
 const yieldToMainThread = () => new Promise(resolve => setTimeout(resolve, 16));
 
 // ============================================================================
@@ -92,6 +91,7 @@ function loadPersistedState() {
       id: 'session_' + Date.now(),
       title: 'Welcome Study Session',
       createdAt: Date.now(),
+      summary: '',
       messages: [
         {
           role: 'assistant',
@@ -167,7 +167,40 @@ function findRelevantStudyContext(userQuery) {
 }
 
 // ============================================================================
-// 5. Dual Engine Core: Gemini Online & WebLLM Offline
+// 5. Automatic Rolling Memory & Context Compiler
+// ============================================================================
+
+function updateChatSummary(chat) {
+  if (!chat || !chat.messages || chat.messages.length <= 4) return;
+
+  // Compress messages older than the last 4 into a bulleted memory summary
+  const olderMessages = chat.messages.slice(0, -4);
+  const memoryPoints = [];
+
+  for (let i = 0; i < olderMessages.length; i += 2) {
+    const userMsg = olderMessages[i];
+    const aiMsg = olderMessages[i + 1];
+
+    if (userMsg && userMsg.content) {
+      const userText = userMsg.content.slice(0, 90).replace(/\n/g, ' ');
+      let outcome = '';
+      if (aiMsg && aiMsg.content) {
+        if (aiMsg.content.includes('```')) {
+          outcome = ' (Provided code/solution)';
+        } else {
+          outcome = ` (AI discussed: ${aiMsg.content.slice(0, 70).replace(/\n/g, ' ')}...)`;
+        }
+      }
+      memoryPoints.push(`- Previous Topic: "${userText}"${outcome}`);
+    }
+  }
+
+  // Keep up to 6 key historical memory bullets
+  chat.summary = memoryPoints.slice(-6).join('\n');
+}
+
+// ============================================================================
+// 6. Dual Engine Core: Gemini Online & WebLLM Offline
 // ============================================================================
 
 async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
@@ -189,7 +222,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
     contents: cleanHistory,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 8192
+      maxOutputTokens: 8192 // Extended to maximum limit
     }
   };
 
@@ -203,7 +236,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
 
   for (const model of modelsToTry) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
+      const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
       
       const response = await fetch(url, {
         method: 'POST',
@@ -290,7 +323,6 @@ async function loadOfflineModel(onProgress) {
   await yieldToMainThread();
 
   try {
-    // Dynamic import runs only on-demand when user explicitly asks for offline model
     if (!state.webllmModule) {
       state.webllmModule = await import(WEBLLM_CDN);
     }
@@ -348,6 +380,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
 
+  // Clear temporary tensors to prevent "NDArray has already been disposed"
   try {
     await state.webllmEngine.resetChat(false);
   } catch (e) {
@@ -360,7 +393,8 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  const recentTurns = messages.slice(-2);
+  // Keep the last 4 active messages so the model maintains recent dialogue context
+  const recentTurns = messages.slice(-4);
   for (const m of recentTurns) {
     formatted.push({
       role: m.role === 'user' ? 'user' : 'assistant',
@@ -375,7 +409,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
       messages: formatted,
       temperature: 0.6,
-      max_tokens: 2048,
+      max_tokens: 2048, // 2048 token generation limit
       stream: true
     });
 
@@ -404,14 +438,14 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
       state.webllmEngine = null;
       state.isModelReady = false;
       await loadOfflineModel();
-      throw new Error('Memory cleared. Please tap Send once more!');
+      throw new Error('Memory refreshed. Please tap Send once more!');
     }
     throw err;
   }
 }
 
 // ============================================================================
-// 6. UI Renderers, Math Containers & Code Blocks
+// 7. UI Renderers, Math Containers & Code Blocks
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -461,6 +495,7 @@ function renderChatList() {
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
+  // 1. Multi-line Code blocks ```language ... ```
   let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const displayLang = lang.trim() || 'code';
     const escapedCode = code
@@ -482,6 +517,7 @@ function formatMarkdown(text) {
     `;
   });
 
+  // 2. Math Formula Containers $$ ... $$
   formatted = formatted.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
     const escapedFormula = formula.trim()
       .replace(/&/g, '&amp;')
@@ -502,10 +538,14 @@ function formatMarkdown(text) {
     `;
   });
 
+  // 3. Inline Code `...`
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+  // 4. Bold & Italics
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
+  // 5. Paragraph separation
   const parts = formatted.split(/\n\n+/);
   return parts.map(p => {
     if (p.includes('<div class="code-block-container')) return p;
@@ -652,7 +692,6 @@ function updateOfflineBarUI() {
 
   if (!bar) return;
 
-  // Sync mode dropdown in top bar
   if (modeSelect) modeSelect.value = state.currentMode;
 
   if (state.currentMode === 'offline') {
@@ -718,7 +757,7 @@ function updateOfflineBarUI() {
 }
 
 // ============================================================================
-// 7. Message Dispatcher
+// 8. Message Dispatcher
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -752,6 +791,9 @@ async function handleSendMessage() {
     chat.title = text.length > 26 ? text.slice(0, 26) + '...' : text;
   }
 
+  // Update rolling context memory summary for earlier turns
+  updateChatSummary(chat);
+
   inputEl.value = '';
   inputEl.style.height = 'auto';
   saveChats();
@@ -766,6 +808,14 @@ async function handleSendMessage() {
     let finalInstruction = '';
     if (state.personaEnabled && state.systemPersona && state.systemPersona.trim().length > 0) {
       finalInstruction = state.systemPersona.trim();
+    }
+
+    // Attach rolling historical summary so the model remembers earlier topics
+    if (chat.summary) {
+      finalInstruction += 
+        `\n\n[CONVERSATION CONTEXT & TOPICS DISCUSSED SO FAR]:\n` +
+        chat.summary +
+        `\n(Note: The user can ask about these previous topics or code anytime. Reply naturally.)`;
     }
 
     const matchedStudyData = findRelevantStudyContext(text);
@@ -824,6 +874,7 @@ function createNewChat() {
     id: 'session_' + Date.now(),
     title: 'New Study Session',
     createdAt: Date.now(),
+    summary: '',
     messages: []
   };
   state.chats.unshift(newChat);
@@ -927,7 +978,7 @@ function exportCurrentChatToFiles() {
 }
 
 // ============================================================================
-// 8. Bootstrap & Event Listeners
+// 9. Bootstrap & Event Listeners
 // ============================================================================
 
 function initKinStudyApp() {
