@@ -1,7 +1,7 @@
-
 /**
- * KinStudy Pro - iPad Dual Engine Architecture
- * Smart Rolling Memory, 2048+ Tokens, Safe WebGPU Tensor Reset & Code Containers
+ * KinStudy Pro - 100% Offline iPad AI Assistant
+ * Zero External Gemini Dependencies, Standalone WebLLM Bundle,
+ * Rolling Summary Memory, 2048 Tokens, NDArray Safe Flush & Code Windows
  */
 
 // ============================================================================
@@ -14,21 +14,19 @@ const DEFAULT_PERSONA =
   "DO NOT summarize or repeat the previous chat history before answering. " +
   "Answer questions directly, concisely, and supportively. " +
   "When providing code, ALWAYS wrap it inside Markdown code blocks with the exact language (e.g. ```html, ```python). " +
-  "When providing math equations or formulas, wrap standalone formulas in double dollar signs ($$ formula $$) or code blocks so they render cleanly.";
+  "When providing math equations or formulas, wrap standalone formulas in double dollar signs ($$formula$$) or code blocks so they render cleanly.";
 
 const STORAGE_KEYS = {
-  CHATS: 'kinstudy_v3_chats',
-  ACTIVE_ID: 'kinstudy_v3_active_id',
-  API_KEY: 'kinstudy_v3_api_key',
-  PERSONA: 'kinstudy_v3_persona',
-  PERSONA_ENABLED: 'kinstudy_v3_persona_enabled',
-  THEME: 'kinstudy_v3_theme',
-  MODE: 'kinstudy_v3_mode',
-  ONLINE_MODEL: 'kinstudy_v3_online_model',
-  OFFLINE_MODEL: 'kinstudy_v3_offline_model'
+  CHATS: 'kinstudy_v4_chats',
+  ACTIVE_ID: 'kinstudy_v4_active_id',
+  PERSONA: 'kinstudy_v4_persona',
+  PERSONA_ENABLED: 'kinstudy_v4_persona_enabled',
+  THEME: 'kinstudy_v4_theme',
+  OFFLINE_MODEL: 'kinstudy_v4_offline_model'
 };
 
-const WEBLLM_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+// Standalone, self-contained single bundle with NO external sub-chunks
+const WEBLLM_BUNDLE_URL = "https://esm.sh/@mlc-ai/web-llm@0.2.78?bundle";
 
 // ============================================================================
 // 2. Application State
@@ -37,13 +35,10 @@ const WEBLLM_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 const state = {
   chats: [],
   activeChatId: null,
-  geminiApiKey: '',
   systemPersona: DEFAULT_PERSONA,
   personaEnabled: true,
   theme: 'dark',
-  currentMode: 'online',
-  onlineModel: 'gemini-3.8-flash',
-  offlineModel: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+  offlineModel: 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC',
 
   // Engine state
   webllmEngine: null,
@@ -74,7 +69,6 @@ function loadPersistedState() {
   }
 
   state.activeChatId = localStorage.getItem(STORAGE_KEYS.ACTIVE_ID) || null;
-  state.geminiApiKey = localStorage.getItem(STORAGE_KEYS.API_KEY) || '';
 
   const savedPersona = localStorage.getItem(STORAGE_KEYS.PERSONA);
   state.systemPersona = savedPersona !== null ? savedPersona : DEFAULT_PERSONA;
@@ -83,9 +77,7 @@ function loadPersistedState() {
   state.personaEnabled = savedEnabled !== null ? savedEnabled === 'true' : true;
 
   state.theme = localStorage.getItem(STORAGE_KEYS.THEME) || 'dark';
-  state.currentMode = localStorage.getItem(STORAGE_KEYS.MODE) || 'online';
-  state.onlineModel = localStorage.getItem(STORAGE_KEYS.ONLINE_MODEL) || 'gemini-3.8-flash';
-  state.offlineModel = localStorage.getItem(STORAGE_KEYS.OFFLINE_MODEL) || 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC';
+  state.offlineModel = localStorage.getItem(STORAGE_KEYS.OFFLINE_MODEL) || 'Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC';
 
   if (!state.chats.length) {
     const welcomeSession = {
@@ -96,7 +88,7 @@ function loadPersistedState() {
       messages: [
         {
           role: 'assistant',
-          content: "Hey! 👋 What are we working on today? Ask me any question, maths problem, or code you want to build!",
+          content: "Hey! 👋 I'm your **offline study buddy and coding mentor**! What are we building or studying today? Ask any Maths, Science, or Code question (HTML, Python, Games, JS)!",
           timestamp: Date.now()
         }
       ]
@@ -115,12 +107,9 @@ function saveChats() {
 }
 
 function saveSettings() {
-  localStorage.setItem(STORAGE_KEYS.API_KEY, state.geminiApiKey);
   localStorage.setItem(STORAGE_KEYS.PERSONA, state.systemPersona);
   localStorage.setItem(STORAGE_KEYS.PERSONA_ENABLED, String(state.personaEnabled));
   localStorage.setItem(STORAGE_KEYS.THEME, state.theme);
-  localStorage.setItem(STORAGE_KEYS.MODE, state.currentMode);
-  localStorage.setItem(STORAGE_KEYS.ONLINE_MODEL, state.onlineModel);
   localStorage.setItem(STORAGE_KEYS.OFFLINE_MODEL, state.offlineModel);
 }
 
@@ -168,13 +157,12 @@ function findRelevantStudyContext(userQuery) {
 }
 
 // ============================================================================
-// 5. Automatic Rolling Memory & Context Compiler
+// 5. Automatic Rolling Memory Summary
 // ============================================================================
 
 function updateChatSummary(chat) {
   if (!chat || !chat.messages || chat.messages.length <= 4) return;
 
-  // Compress messages older than the last 4 into a bulleted memory summary
   const olderMessages = chat.messages.slice(0, -4);
   const memoryPoints = [];
 
@@ -196,107 +184,27 @@ function updateChatSummary(chat) {
     }
   }
 
-  // Keep up to 6 key historical memory bullets
   chat.summary = memoryPoints.slice(-6).join('\n');
 }
 
 // ============================================================================
-// 6. Dual Engine Core: Gemini Online & WebLLM Offline
+// 6. WebLLM Offline Engine (Resilient WebGPU Execution)
 // ============================================================================
 
-async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
-  if (!state.geminiApiKey.trim()) throw new Error('MISSING_API_KEY');
-
-  const modelsToTry = [
-    state.onlineModel,
-    'gemini-3.8-flash',
-    'gemini-3.7-flash',
-    'gemini-2.5-flash'
-  ].filter((v, i, a) => a.indexOf(v) === i);
-
-  const cleanHistory = messages.map(m => ({
-    role: m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.content }]
-  }));
-
-  const payload = {
-    contents: cleanHistory,
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192 // Extended to maximum limit
-    }
-  };
-
-  if (systemInstruction && systemInstruction.trim().length > 0) {
-    payload.system_instruction = {
-      parts: [{ text: systemInstruction.trim() }]
-    };
+async function getWebLLMModule() {
+  if (state.webllmModule) return state.webllmModule;
+  if (window.webllm) {
+    state.webllmModule = window.webllm;
+    return state.webllmModule;
   }
-
-  let lastError = null;
-
-  for (const model of modelsToTry) {
-    try {
-      const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: signal
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const msg = errorData.error?.message || `HTTP ${response.status}`;
-        if (response.status === 400 && msg.toLowerCase().includes('api key')) throw new Error('INVALID_API_KEY');
-        lastError = new Error(msg);
-        continue;
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let fullText = '';
-      let buffer = '';
-
-      while (true) {
-        if (signal && signal.aborted) {
-          reader.cancel();
-          break;
-        }
-
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim();
-            if (!jsonStr || jsonStr === '[DONE]') continue;
-            try {
-              const parsed = JSON.parse(jsonStr);
-              const textPiece = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (textPiece) {
-                fullText += textPiece;
-                onChunk(fullText);
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      if (fullText.trim()) return fullText;
-    } catch (err) {
-      if (err.name === 'AbortError') throw err;
-      if (err.message === 'INVALID_API_KEY' || err.message === 'MISSING_API_KEY') throw err;
-      lastError = err;
-    }
+  try {
+    const mod = await import(WEBLLM_BUNDLE_URL);
+    state.webllmModule = mod.default || mod;
+    return state.webllmModule;
+  } catch (err) {
+    console.error('[WebLLM Load Error]:', err);
+    throw new Error('Could not load WebLLM engine bundle. Please make sure you opened KinStudy on Wi-Fi once to complete initial caching!');
   }
-
-  throw lastError || new Error('Connection failed. Please check your network.');
 }
 
 async function loadOfflineModel(onProgress) {
@@ -324,10 +232,7 @@ async function loadOfflineModel(onProgress) {
   await yieldToMainThread();
 
   try {
-    if (!state.webllmModule) {
-      state.webllmModule = await import(WEBLLM_CDN);
-    }
-    const webllm = state.webllmModule;
+    const webllm = await getWebLLMModule();
 
     let lastRenderUpdate = 0;
     const engine = await webllm.CreateMLCEngine(targetModel, {
@@ -364,7 +269,7 @@ async function unloadOfflineModel() {
     try {
       await state.webllmEngine.unload();
     } catch (e) {
-      console.warn('Engine release warning:', e);
+      console.warn('Engine release notice:', e);
     }
     state.webllmEngine = null;
     state.loadedModelId = null;
@@ -385,7 +290,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
   try {
     await state.webllmEngine.resetChat(false);
   } catch (e) {
-    console.warn('[WebLLM] Cache reset:', e);
+    console.warn('[WebLLM] Cache reset notice:', e);
   }
 
   const formatted = [];
@@ -394,8 +299,8 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Keep the last 4 active messages so the model maintains recent dialogue context
-  const recentTurns = messages.slice(-4);
+  // Keep the last 4-6 messages for active conversation context
+  const recentTurns = messages.slice(-6);
   for (const m of recentTurns) {
     formatted.push({
       role: m.role === 'user' ? 'user' : 'assistant',
@@ -439,7 +344,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
       state.webllmEngine = null;
       state.isModelReady = false;
       await loadOfflineModel();
-      throw new Error('Memory refreshed. Please tap Send once more!');
+      throw new Error('VRAM context refreshed cleanly. Please tap Send once more!');
     }
     throw err;
   }
@@ -496,7 +401,7 @@ function renderChatList() {
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
-  // 1. Multi-line Code blocks ```language ... ```
+  // 1. Code blocks ```language ... ```
   let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const displayLang = lang.trim() || 'code';
     const escapedCode = code
@@ -546,7 +451,7 @@ function formatMarkdown(text) {
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  // 5. Paragraph separation
+  // 5. Paragraphs
   const parts = formatted.split(/\n\n+/);
   return parts.map(p => {
     if (p.includes('<div class="code-block-container')) return p;
@@ -583,8 +488,8 @@ function renderMessages() {
     scrollArea.innerHTML = `
       <div class="welcome-hero">
         <div class="welcome-avatar">⚡</div>
-        <h2>KinStudy Assistant</h2>
-        <p>Your instant offline & online study and coding companion. Ask anything!</p>
+        <h2>KinStudy Offline Assistant</h2>
+        <p>Your private, local WebGPU coding and study companion. Completely offline!</p>
         <div class="quick-prompts-grid">
           <div class="prompt-card" onclick="window.sendPrompt('Write simple HTML code displaying Harsh in bold letters.')">
             <span class="prompt-tag">💻 HTML Code</span>
@@ -598,9 +503,9 @@ function renderMessages() {
             <span class="prompt-tag">📐 Maths</span>
             <span class="prompt-desc">Pythagorean theorem formula and resolution</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('Why is the sky blue?')">
-            <span class="prompt-tag">🌱 Science</span>
-            <span class="prompt-desc">Rayleigh scattering explained clearly</span>
+          <div class="prompt-card" onclick="window.sendPrompt('Explain Newton\\'s second law of motion with a real life example.')">
+            <span class="prompt-tag">🌱 Physics</span>
+            <span class="prompt-desc">F = m × a explained with a shopping cart</span>
           </div>
         </div>
       </div>
@@ -626,11 +531,7 @@ function renderMessages() {
 
     let senderLabel = 'You';
     if (!isUser) {
-      if (state.currentMode === 'online') {
-        senderLabel = 'Gemini';
-      } else {
-        senderLabel = state.offlineModel.includes("Coder") ? "Qwen Coder" : "WebLLM Qwen";
-      }
+      senderLabel = state.offlineModel.includes("Coder") ? "Qwen Coder" : "WebLLM Qwen";
     }
 
     const sender = document.createElement('span');
@@ -683,77 +584,57 @@ function updateOfflineBarUI() {
   const btnUnload = document.getElementById('btn-unload-model');
   const statusMsg = document.getElementById('status-msg');
   const progressWrap = document.getElementById('load-progress-bar');
-  const footerMode = document.getElementById('footer-mode-label');
-  const onlineSelect = document.getElementById('online-model-select');
   const offlineSelect = document.getElementById('offline-model-select');
   const modelTag = document.getElementById('current-model-tag');
-  const modeSelect = document.getElementById('mode-select');
   const chatInput = document.getElementById('chat-input');
   const sendBtn = document.getElementById('btn-send');
 
   if (!bar) return;
 
-  if (modeSelect) modeSelect.value = state.currentMode;
+  if (offlineSelect) {
+    offlineSelect.value = state.offlineModel;
+  }
 
-  if (state.currentMode === 'offline') {
-    bar.classList.add('active');
-    if (onlineSelect) onlineSelect.style.display = 'none';
-    if (offlineSelect) {
-      offlineSelect.style.display = 'block';
-      offlineSelect.value = state.offlineModel;
+  let shortOfflineName = "Qwen2.5-Coder (Code)";
+  let approxRAM = "~980 MB";
+
+  if (state.offlineModel.includes("0.5B")) {
+    shortOfflineName = "Qwen2.5-0.5B (Light)";
+    approxRAM = "~380 MB";
+  } else if (state.offlineModel.includes("1.5B-Instruct")) {
+    shortOfflineName = "Qwen2.5-1.5B (Deep)";
+    approxRAM = "~1150 MB";
+  }
+
+  if (modelTag) modelTag.textContent = shortOfflineName;
+
+  if (state.isModelReady) {
+    ramBadge.textContent = `${approxRAM} in RAM`;
+    ramBadge.className = 'ram-badge ready';
+
+    const tokenInfo = state.lastTokensGenerated ? ` (${state.lastTokensGenerated} tokens generated)` : '';
+    statusMsg.textContent = `${shortOfflineName} ready for offline reasoning${tokenInfo}.`;
+    btnLoad.style.display = 'none';
+    btnUnload.style.display = 'block';
+    progressWrap.style.display = 'none';
+
+    if (!state.isGenerating) {
+      if (chatInput) chatInput.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
     }
-    if (footerMode) footerMode.innerHTML = '<span class="dot offline"></span> Offline WebGPU';
-
-    let shortOfflineName = "Qwen2.5-0.5B (Light)";
-    let approxRAM = "~380 MB";
-
-    if (state.offlineModel.includes("Coder")) {
-      shortOfflineName = "Qwen2.5-Coder-1.5B (Code)";
-      approxRAM = "~980 MB";
-    } else if (state.offlineModel.includes("1.5B")) {
-      shortOfflineName = "Qwen2.5-1.5B (Deep)";
-      approxRAM = "~1150 MB";
-    }
-
-    if (modelTag) modelTag.textContent = shortOfflineName;
-
-    if (state.isModelReady) {
-      ramBadge.textContent = `${approxRAM} in RAM`;
-      ramBadge.className = 'ram-badge ready';
-
-      const tokenInfo = state.lastTokensGenerated ? ` (${state.lastTokensGenerated} tokens generated)` : '';
-      statusMsg.textContent = `${shortOfflineName} ready for offline reasoning${tokenInfo}.`;
-      btnLoad.style.display = 'none';
-      btnUnload.style.display = 'block';
-      progressWrap.style.display = 'none';
-
-      if (!state.isGenerating) {
-        if (chatInput) chatInput.disabled = false;
-        if (sendBtn) sendBtn.disabled = false;
-      }
-    } else if (state.isModelLoading) {
-      ramBadge.textContent = 'Compiling...';
-      ramBadge.className = 'ram-badge';
-      btnLoad.style.display = 'none';
-      btnUnload.style.display = 'none';
-      progressWrap.style.display = 'block';
-    } else {
-      ramBadge.textContent = 'RAM Inactive';
-      ramBadge.className = 'ram-badge';
-      statusMsg.textContent = `Zero background memory used. Tap to load ${shortOfflineName}.`;
-      btnLoad.style.display = 'block';
-      btnUnload.style.display = 'none';
-      progressWrap.style.display = 'none';
-    }
+  } else if (state.isModelLoading) {
+    ramBadge.textContent = 'Compiling...';
+    ramBadge.className = 'ram-badge';
+    btnLoad.style.display = 'none';
+    btnUnload.style.display = 'none';
+    progressWrap.style.display = 'block';
   } else {
-    bar.classList.remove('active');
-    if (onlineSelect) {
-      onlineSelect.style.display = 'block';
-      onlineSelect.value = state.onlineModel;
-    }
-    if (offlineSelect) offlineSelect.style.display = 'none';
-    if (footerMode) footerMode.innerHTML = '<span class="dot online"></span> Online Mode';
-    if (modelTag) modelTag.textContent = state.onlineModel;
+    ramBadge.textContent = 'RAM Inactive';
+    ramBadge.className = 'ram-badge';
+    statusMsg.textContent = `Zero background memory used. Tap to load ${shortOfflineName}.`;
+    btnLoad.style.display = 'block';
+    btnUnload.style.display = 'none';
+    progressWrap.style.display = 'none';
   }
 }
 
@@ -792,7 +673,6 @@ async function handleSendMessage() {
     chat.title = text.length > 26 ? text.slice(0, 26) + '...' : text;
   }
 
-  // Update rolling context memory summary for earlier turns
   updateChatSummary(chat);
 
   inputEl.value = '';
@@ -811,7 +691,6 @@ async function handleSendMessage() {
       finalInstruction = state.systemPersona.trim();
     }
 
-    // Attach rolling historical summary so the model remembers earlier topics
     if (chat.summary) {
       finalInstruction += 
         `\n\n[CONVERSATION CONTEXT & TOPICS DISCUSSED SO FAR]:\n` +
@@ -828,29 +707,18 @@ async function handleSendMessage() {
         `- Guidance: Put formulas inside a code block or $$ container so it renders in a nice box. Speak naturally without repeating the user question.`;
     }
 
-    if (state.currentMode === 'online') {
-      const history = chat.messages.slice(0, -1);
-      const reply = await callGeminiOnline(history, finalInstruction, (streamingText) => {
-        assistantMsg.content = streamingText;
-        updateStreamingBubble(streamingText);
-      }, state.abortController.signal);
-      assistantMsg.content = reply;
-    } else {
-      const history = chat.messages.slice(0, -1);
-      const reply = await callWebLLMOffline(history, finalInstruction, (streamingText) => {
-        assistantMsg.content = streamingText;
-        updateStreamingBubble(streamingText);
-      }, state.abortController.signal);
-      assistantMsg.content = reply;
-    }
+    const history = chat.messages.slice(0, -1);
+    const reply = await callWebLLMOffline(history, finalInstruction, (streamingText) => {
+      assistantMsg.content = streamingText;
+      updateStreamingBubble(streamingText);
+    }, state.abortController.signal);
+    assistantMsg.content = reply;
+
   } catch (err) {
     if (err.name === 'AbortError') {
       // Stopped by user
-    } else if (err.message === 'MISSING_API_KEY') {
-      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
-      openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
+      assistantMsg.content = '⚠️️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
     } else {
       assistantMsg.content = `⚠️ **Error:** ${err.message || err}`;
     }
@@ -905,21 +773,6 @@ function selectChat(id) {
   toggleSidebar(false);
 }
 
-async function setEngineMode(mode) {
-  if (mode === state.currentMode) return;
-  state.currentMode = mode;
-  saveSettings();
-
-  const modeSelect = document.getElementById('mode-select');
-  if (modeSelect) modeSelect.value = mode;
-
-  if (mode === 'online' && state.webllmEngine) {
-    await unloadOfflineModel();
-  }
-
-  updateOfflineBarUI();
-}
-
 function toggleSidebar(forceState) {
   const sidebar = document.getElementById('sidebar');
   const backdrop = document.getElementById('sidebar-backdrop');
@@ -940,7 +793,6 @@ function openModal(isOpen) {
   if (!modal) return;
 
   if (isOpen) {
-    document.getElementById('input-api-key').value = state.geminiApiKey;
     document.getElementById('input-persona').value = state.systemPersona;
     document.getElementById('check-enable-persona').checked = state.personaEnabled;
     modal.classList.add('active');
@@ -986,22 +838,6 @@ function initKinStudyApp() {
   loadPersistedState();
   applyTheme(state.theme);
   fetchKnowledgeBase();
-
-  const modeSelect = document.getElementById('mode-select');
-  if (modeSelect) {
-    modeSelect.value = state.currentMode;
-    modeSelect.onchange = (e) => setEngineMode(e.target.value);
-  }
-
-  const onlineModelSelect = document.getElementById('online-model-select');
-  if (onlineModelSelect) {
-    onlineModelSelect.value = state.onlineModel;
-    onlineModelSelect.onchange = (e) => {
-      state.onlineModel = e.target.value;
-      saveSettings();
-      updateOfflineBarUI();
-    };
-  }
 
   const offlineModelSelect = document.getElementById('offline-model-select');
   if (offlineModelSelect) {
@@ -1096,7 +932,6 @@ function initKinStudyApp() {
   const btnSaveSettings = document.getElementById('btn-save-settings');
   if (btnSaveSettings) {
     btnSaveSettings.onclick = () => {
-      state.geminiApiKey = document.getElementById('input-api-key').value.trim();
       state.personaEnabled = document.getElementById('check-enable-persona').checked;
       state.systemPersona = document.getElementById('input-persona').value.trim();
       saveSettings();
@@ -1115,11 +950,10 @@ function initKinStudyApp() {
   const btnClearAll = document.getElementById('btn-clear-storage');
   if (btnClearAll) {
     btnClearAll.onclick = async () => {
-      if (confirm('Clear all chats and saved settings?')) {
+      if (confirm('Clear all chats and saved persona settings?')) {
         await unloadOfflineModel();
         localStorage.clear();
         state.chats = [];
-        state.geminiApiKey = '';
         state.systemPersona = DEFAULT_PERSONA;
         createNewChat();
         openModal(false);
