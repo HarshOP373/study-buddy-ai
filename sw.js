@@ -1,11 +1,13 @@
-const CACHE_NAME = 'study-buddy-cache-v11';
+const CACHE_NAME = 'kinstudy-offline-v14';
 
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json'
+  './study-data.json',
+  './manifest.json',
+  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm'
 ];
 
 self.addEventListener('install', (event) => {
@@ -31,13 +33,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Allow Hugging Face models, large files, CDN packages, and Google APIs to bypass service worker caching
+  // Hugging Face weights and API keys are not intercepted by the service worker
   if (
     url.hostname.includes('huggingface.co') ||
     url.hostname.includes('cdn-lfs') ||
-    url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('esm.run') ||
-    url.hostname.includes('jsdelivr.net')
+    url.hostname.includes('googleapis.com')
   ) {
     return;
   }
