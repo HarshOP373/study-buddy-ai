@@ -3,8 +3,6 @@
  * Multi-Model Online, Multi-Model Offline, Real-Time Streaming, Stop Button & Code Blocks
  */
 
-import * as webllm from "https://esm.run/@mlc-ai/web-llm@0.2.78";
-
 // ============================================================================
 // 1. Configuration & Constants
 // ============================================================================
@@ -27,6 +25,8 @@ const STORAGE_KEYS = {
   OFFLINE_MODEL: 'kinstudy_v3_offline_model'
 };
 
+const WEBLLM_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+
 // ============================================================================
 // 2. Application State
 // ============================================================================
@@ -44,6 +44,7 @@ const state = {
 
   // Engine state
   webllmEngine: null,
+  webllmModule: null,
   loadedModelId: null,
   isModelLoading: false,
   isModelReady: false,
@@ -283,6 +284,12 @@ async function loadOfflineModel(onProgress) {
   updateOfflineBarUI();
 
   try {
+    // Dynamic import runs only on demand, cached by service worker
+    if (!state.webllmModule) {
+      state.webllmModule = await import(WEBLLM_CDN);
+    }
+    const webllm = state.webllmModule;
+
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
         if (onProgress) onProgress(report);
@@ -716,14 +723,14 @@ async function handleSendMessage() {
     }
   } catch (err) {
     if (err.name === 'AbortError') {
-      // Stopped cleanly by user
+      // User tapped stop
     } else if (err.message === 'MISSING_API_KEY') {
-      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️) and paste your free Gemini API key.';
+      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️️) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar.';
+      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
     } else {
-      assistantMsg.content = `⚠️️ **Error:** ${err.message || err}`;
+      assistantMsg.content = `⚠ **Error:** ${err.message || err}`;
     }
     updateStreamingBubble(assistantMsg.content);
   } finally {
