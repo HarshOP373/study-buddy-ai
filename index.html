@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>KinStudy - Mini Gemini & Study Buddy</title>
+  <title>KinStudy - Offline AI Coding & Study Buddy</title>
 
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
         <div class="brand-badge">
           <div class="brand-icon">⚡</div>
           <div class="brand-text">
-            <h1>KinStudy <span class="pill">Mini Gemini</span></h1>
+            <h1>KinStudy <span class="pill">Offline WebGPU</span></h1>
             <p>Study & Code Companion</p>
           </div>
         </div>
@@ -51,8 +51,8 @@
       <div class="sidebar-footer">
         <div class="footer-row">
           <div class="mode-indicator" id="footer-mode-label">
-            <span class="dot online"></span>
-            <span>Online Mode</span>
+            <span class="dot offline"></span>
+            <span>100% Offline WebGPU</span>
           </div>
           <button id="btn-theme-toggle" class="btn-theme-toggle" title="Toggle Theme">🌙 Dark</button>
         </div>
@@ -63,7 +63,7 @@
         </button>
 
         <button id="btn-open-settings" class="btn-footer">
-          <span>⚙️ Settings & Engine</span>
+          <span>⚙️ Custom Persona</span>
           <span class="sub-pill">Config</span>
         </button>
       </div>
@@ -78,29 +78,16 @@
           </button>
           <div class="chat-title-group">
             <h2 class="chat-header-title" id="chat-header-title">Welcome Study Session</h2>
-            <span class="model-tag" id="current-model-tag">Gemini 3.8 Flash</span>
+            <span class="model-tag" id="current-model-tag">Qwen2.5-Coder (Code)</span>
           </div>
         </div>
 
         <div class="top-bar-right">
-          <!-- Engine Mode Selector -->
-          <select id="mode-select" class="mode-select-pill" aria-label="Engine Mode">
-            <option value="online">⚡ Online</option>
-            <option value="offline">💾 Offline (WebGPU)</option>
-          </select>
-
-          <!-- Online Model Selector -->
-          <select id="online-model-select" class="mode-select-pill" aria-label="Online Model">
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash</option>
-            <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-          </select>
-
-          <!-- Offline Model Selector -->
-          <select id="offline-model-select" class="mode-select-pill" style="display:none;" aria-label="Offline Model">
-            <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen2.5-0.5B (Light)</option>
-            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen2.5-1.5B (Deep)</option>
+          <!-- Offline WebGPU Model Selector -->
+          <select id="offline-model-select" class="mode-select-pill" aria-label="Offline Model">
             <option value="Qwen2.5-Coder-1.5B-Instruct-q4f16_1-MLC">💻 Qwen2.5-Coder-1.5B (Code)</option>
+            <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">⚡ Qwen2.5-0.5B (Light)</option>
+            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">🧠 Qwen2.5-1.5B (Deep)</option>
           </select>
 
           <button id="btn-top-export" class="btn-top-action" title="Export Notes">
@@ -112,12 +99,12 @@
         </div>
       </header>
 
-      <!-- Offline Engine Control Bar -->
-      <div id="offline-status-bar">
+      <!-- Engine Control Bar -->
+      <div id="offline-status-bar" class="active">
         <div class="status-bar-content">
           <div class="status-left">
             <span id="ram-badge" class="ram-badge">RAM Inactive</span>
-            <span id="status-msg">Zero background memory used. Tap to load selected model.</span>
+            <span id="status-msg">Tap to compile shaders and load into iPad memory.</span>
           </div>
           <div style="display:flex; gap:0.5rem; align-items:center;">
             <button id="btn-load-model" class="btn-load-model">⚡ Load Engine</button>
@@ -154,7 +141,7 @@
           </button>
         </div>
         <div class="input-caption">
-          Press <strong>Enter</strong> to send • <strong>Shift + Enter</strong> for new line • Code Blocks active
+          Press <strong>Enter</strong> to send • <strong>Shift + Enter</strong> for new line • Code Blocks & Memory active
         </div>
       </div>
     </main>
@@ -166,52 +153,34 @@
       <div class="modal-header">
         <div style="display:flex; align-items:center; gap:0.5rem;">
           <span style="font-size:1.2rem;">⚙️</span>
-          <h3>Preferences & Engine Config</h3>
+          <h3>AI Study Buddy Configuration</h3>
         </div>
         <button id="btn-modal-close" class="btn-modal-close" aria-label="Close">✕</button>
       </div>
 
       <div class="modal-body">
-        <div class="form-group">
-          <div class="form-label">
-            <span>Gemini API Key (Online Mode)</span>
-            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener" class="link-external">
-              Get Free Key ↗
-            </a>
-          </div>
-          <input
-            id="input-api-key"
-            class="form-input"
-            type="password"
-            placeholder="Paste your AIzaSy... key here"
-            autocomplete="off"
-            spellcheck="false"
-          >
-          <span class="form-hint">Stored strictly inside your iPad's private browser memory.</span>
-        </div>
-
         <div class="form-group box-card">
           <div class="form-label" style="margin-bottom:0.4rem;">
             <label class="toggle-control">
               <input type="checkbox" id="check-enable-persona">
               <span class="toggle-slider"></span>
-              <span style="font-weight:700; margin-left:0.5rem;">Enable Custom Instructions</span>
+              <span style="font-weight:700; margin-left:0.5rem;">Enable Custom Personality</span>
             </label>
             <button id="btn-reset-persona" type="button" class="btn-text-action">Reset Default</button>
           </div>
           <textarea
             id="input-persona"
             class="form-textarea"
-            rows="3"
-            placeholder="Type your custom study rules or role..."
+            rows="4"
+            placeholder="Type how you want the AI buddy to respond..."
           ></textarea>
-          <span class="form-hint">When disabled, the AI responds neutrally without persona rules.</span>
+          <span class="form-hint">Tell your buddy your preferred study style, coding languages, or explanations.</span>
         </div>
 
         <div class="form-group" style="padding-top:0.75rem; border-top:1px solid var(--border-subtle); display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:0.82rem; font-weight:700; color:var(--status-danger);">Wipe Local Data</div>
-            <div style="font-size:0.7rem; color:var(--text-muted);">Deletes chat history and stored keys</div>
+            <div style="font-size:0.7rem; color:var(--text-muted);">Deletes chat history and stored summaries</div>
           </div>
           <button id="btn-clear-storage" class="btn-danger" type="button">Reset All</button>
         </div>
