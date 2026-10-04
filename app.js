@@ -1,6 +1,6 @@
 /**
  * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
- * Multi-Model Online, Multi-Model Offline, Real-Time Streaming, Stop Button & Code Blocks
+ * Natural Human Conversation, Safe WebGPU Reconnect, Code & Math Containers
  */
 
 // ============================================================================
@@ -8,10 +8,12 @@
 // ============================================================================
 
 const DEFAULT_PERSONA = 
-  "You are a warm, supportive older sibling, expert study buddy, and sharp coder. " +
-  "Help me master Maths, Science, Logic, and Coding (HTML, CSS, JS, Python). " +
-  "When providing code, provide complete, working, well-structured code inside Markdown code blocks with the language tag. " +
-  "Never judge mistakes and always finish explanations and code completely.";
+  "You are a friendly, natural older sibling and smart study buddy. " +
+  "Talk like a normal helpful human in casual conversation. " +
+  "DO NOT summarize or repeat the previous chat history before answering. " +
+  "Answer questions directly, concisely, and supportively. " +
+  "When providing code, ALWAYS wrap it inside Markdown code blocks with the exact language (e.g. ```html, ```python). " +
+  "When providing math equations or formulas, wrap standalone formulas in double dollar signs ($$ formula $$) or code blocks so they render cleanly.";
 
 const STORAGE_KEYS = {
   CHATS: 'kinstudy_v3_chats',
@@ -25,7 +27,7 @@ const STORAGE_KEYS = {
   OFFLINE_MODEL: 'kinstudy_v3_offline_model'
 };
 
-const WEBLLM_CDN = "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+const WEBLLM_CDN = "[https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm](https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm)";
 
 // ============================================================================
 // 2. Application State
@@ -90,7 +92,7 @@ function loadPersistedState() {
       messages: [
         {
           role: 'assistant',
-          content: "Hey! 👋 I'm your **study buddy and coding mentor**! What are we building or studying today? Ask any Maths, Science, or Code question (HTML, Python, Games, JS)!",
+          content: "Hey! 👋 What are we working on today? Ask me any question, maths problem, or code you want to build!",
           timestamp: Date.now()
         }
       ]
@@ -162,7 +164,7 @@ function findRelevantStudyContext(userQuery) {
 }
 
 // ============================================================================
-// 5. Dual Engine Core: Gemini Online & WebLLM Offline
+// 5. Dual Engine Core: Gemini Online & WebLLM Offline (With Auto-Heal)
 // ============================================================================
 
 async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
@@ -198,7 +200,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
 
   for (const model of modelsToTry) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
+      const url = `[https://generativelanguage.googleapis.com/v1beta/models/$](https://generativelanguage.googleapis.com/v1beta/models/$){model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(state.geminiApiKey.trim())}`;
       
       const response = await fetch(url, {
         method: 'POST',
@@ -272,19 +274,18 @@ async function loadOfflineModel(onProgress) {
   }
 
   if (!navigator.gpu) {
-    throw new Error('WebGPU is not enabled. Open iPad Settings > Safari > Advanced > Feature Flags and turn ON WebGPU.');
+    throw new Error('WebGPU is not enabled. In iPad Settings > Safari > Advanced > Feature Flags, turn ON WebGPU.');
   }
 
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: "high-performance" });
   if (!adapter) {
-    throw new Error('iPad WebGPU context is temporarily busy. Please swipe-close the app from the iPad App Switcher and re-open.');
+    throw new Error('iPad WebGPU is busy. Swipe-close the app from App Switcher and re-open.');
   }
 
   state.isModelLoading = true;
   updateOfflineBarUI();
 
   try {
-    // Dynamic import runs only on demand, cached by service worker
     if (!state.webllmModule) {
       state.webllmModule = await import(WEBLLM_CDN);
     }
@@ -317,7 +318,7 @@ async function unloadOfflineModel() {
     try {
       await state.webllmEngine.unload();
     } catch (e) {
-      console.warn('Engine release:', e);
+      console.warn('Engine release warning:', e);
     }
     state.webllmEngine = null;
     state.loadedModelId = null;
@@ -335,10 +336,12 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
 
   const formatted = [];
 
+  // Pass concise human persona
   if (systemInstruction && systemInstruction.trim().length > 0) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
+  // Keep only the current user prompt + immediate previous turn to prevent Safari memory overflow
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -347,36 +350,48 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     });
   }
 
-  const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
-    messages: formatted,
-    temperature: 0.6,
-    max_tokens: 2048,
-    stream: true
-  });
-
   let fullReply = '';
   let tokenCount = 0;
 
-  for await (const chunk of asyncChunkGenerator) {
-    if (signal && signal.aborted) {
-      break;
+  try {
+    const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
+      messages: formatted,
+      temperature: 0.6,
+      max_tokens: 1536,
+      stream: true
+    });
+
+    for await (const chunk of asyncChunkGenerator) {
+      if (signal && signal.aborted) {
+        break;
+      }
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        fullReply += delta;
+        tokenCount++;
+        onChunk(fullReply);
+      }
     }
-    const delta = chunk.choices[0]?.delta?.content || '';
-    if (delta) {
-      fullReply += delta;
-      tokenCount++;
-      onChunk(fullReply);
+
+    state.lastTokensGenerated = tokenCount;
+    updateOfflineBarUI();
+    return fullReply || '(Stopped)';
+  } catch (err) {
+    const errMsg = String(err.message || err);
+    // Auto-heal if TVM/WebGPU was disposed in background
+    if (errMsg.includes('disposed') || errMsg.includes('NDArray') || errMsg.includes('device')) {
+      console.warn('[WebLLM] Recovering from disposed WebGPU context...');
+      state.webllmEngine = null;
+      state.isModelReady = false;
+      await loadOfflineModel(); // Auto re-init
+      throw new Error('Engine memory refreshed. Please tap Send again!');
     }
+    throw err;
   }
-
-  state.lastTokensGenerated = tokenCount;
-  updateOfflineBarUI();
-
-  return fullReply || '(Stopped by user)';
 }
 
 // ============================================================================
-// 6. UI Renderers & Code Block Markdown
+// 6. UI Renderers, Math Containers & Code Blocks
 // ============================================================================
 
 function applyTheme(themeName) {
@@ -423,9 +438,13 @@ function renderChatList() {
   });
 }
 
+/**
+ * Parses markdown into ChatGPT-style code blocks and distinct math containers
+ */
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
+  // 1. Multi-line Code blocks ```language ... ```
   let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const displayLang = lang.trim() || 'code';
     const escapedCode = code
@@ -447,13 +466,38 @@ function formatMarkdown(text) {
     `;
   });
 
+  // 2. Math Formula Containers $$ ... $$
+  formatted = formatted.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+    const escapedFormula = formula.trim()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `
+      <div class="code-block-container math-container">
+        <div class="code-block-header">
+          <span class="code-lang-label">📐 Formula</span>
+          <button class="btn-copy-code" onclick="window.copyCodeFromBlock(this)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span>Copy formula</span>
+          </button>
+        </div>
+        <pre><code class="math-code">${escapedFormula}</code></pre>
+      </div>
+    `;
+  });
+
+  // 3. Inline Code `...`
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
+
+  // 4. Bold & Italics
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
+  // 5. Paragraph separation
   const parts = formatted.split(/\n\n+/);
   return parts.map(p => {
-    if (p.includes('<div class="code-block-container">')) return p;
+    if (p.includes('<div class="code-block-container')) return p;
     return `<p>${p.replace(/\n/g, '<br>')}</p>`;
   }).join('');
 }
@@ -490,21 +534,21 @@ function renderMessages() {
         <h2>KinStudy Assistant</h2>
         <p>Your instant offline & online study and coding companion. Ask anything!</p>
         <div class="quick-prompts-grid">
+          <div class="prompt-card" onclick="window.sendPrompt('Write simple HTML code displaying Harsh in bold letters.')">
+            <span class="prompt-tag">💻 HTML Code</span>
+            <span class="prompt-desc">HTML text showing Harsh in bold letters</span>
+          </div>
           <div class="prompt-card" onclick="window.sendPrompt('Create a playable Flappy Bird game in a single HTML file with CSS and JavaScript.')">
             <span class="prompt-tag">🎮 Game Dev</span>
-            <span class="prompt-desc">Create Flappy Bird in a single HTML file</span>
+            <span class="prompt-desc">Playable Flappy Bird single file game</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('Write a Python script that calculates prime numbers step by step.')">
-            <span class="prompt-tag">🐍 Python</span>
-            <span class="prompt-desc">Prime number generator with explanations</span>
+          <div class="prompt-card" onclick="window.sendPrompt('What is the formula of Pythagorean theorem and how does it calculate the hypotenuse?')">
+            <span class="prompt-tag">📐 Maths</span>
+            <span class="prompt-desc">Pythagorean theorem formula and right triangle resolution</span>
           </div>
-          <div class="prompt-card" onclick="window.sendPrompt('Explain the quadratic formula with pizza slices!')">
-            <span class="prompt-tag">🍕 Algebra</span>
-            <span class="prompt-desc">Explain quadratic formula with simple analogies</span>
-          </div>
-          <div class="prompt-card" onclick="window.sendPrompt('What is Ohm\\'s Law and how do volts, amps, and ohms work together?')">
-            <span class="prompt-tag">⚡ Physics</span>
-            <span class="prompt-desc">Ohm's Law explained through a water hose analogy</span>
+          <div class="prompt-card" onclick="window.sendPrompt('Why is the sky blue?')">
+            <span class="prompt-tag">🌱 Science</span>
+            <span class="prompt-desc">Rayleigh scattering explained clearly</span>
           </div>
         </div>
       </div>
@@ -646,7 +690,7 @@ function updateOfflineBarUI() {
 }
 
 // ============================================================================
-// 7. Message Dispatcher with Abort & Stop Support
+// 7. Message Dispatcher
 // ============================================================================
 
 window.sendPrompt = function(promptText) {
@@ -700,10 +744,9 @@ async function handleSendMessage() {
     if (matchedStudyData) {
       finalInstruction += 
         `\n\n[RELEVANT STUDY REFERENCE]:\n` +
-        `- Subject: ${matchedStudyData.title} (${matchedStudyData.category})\n` +
-        `- Formula/Equation: ${matchedStudyData.formula}\n` +
-        `- Key Fact: ${matchedStudyData.explanation}\n` +
-        `- Guidance: Blend this reference naturally into your response so the explanation is clear and accurate.`;
+        `- Concept: ${matchedStudyData.title}\n` +
+        `- Equation: ${matchedStudyData.formula}\n` +
+        `- Guidance: Put formulas inside a code block or $$ container so it renders in a nice box. Speak naturally without repeating the user question.`;
     }
 
     if (state.currentMode === 'online') {
@@ -725,7 +768,7 @@ async function handleSendMessage() {
     if (err.name === 'AbortError') {
       // User tapped stop
     } else if (err.message === 'MISSING_API_KEY') {
-      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙️️) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
+      assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
       assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
