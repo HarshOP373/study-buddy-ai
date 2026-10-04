@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinstudy-offline-v18';
+const CACHE_NAME = 'kinstudy-offline-v20';
 
 const PRECACHE_ASSETS = [
   './',
@@ -39,6 +39,26 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('cdn-lfs') ||
     url.hostname.includes('googleapis.com')
   ) {
+    return;
+  }
+
+  // Auto-cache all WebLLM CDN sub-chunks dynamically so offline never fails
+  if (url.hostname.includes('jsdelivr.net') || url.hostname.includes('esm.run')) {
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        try {
+          const networkResponse = await fetch(event.request);
+          if (networkResponse && networkResponse.ok) {
+            cache.put(event.request, networkResponse.clone());
+          }
+          return networkResponse;
+        } catch (e) {
+          return cached || new Response('Offline script missing', { status: 404 });
+        }
+      })
+    );
     return;
   }
 
