@@ -1,9 +1,8 @@
 /**
- * KinStudy Pro - Ultra-Smooth iPad Dual Engine Architecture
- * Natural Human Conversation, Safe WebGPU Reconnect, Code & Math Containers
+ * KinStudy Pro - iPad Dual Engine Architecture
+ * Non-Blocking UI, Thread-Yielding Loader, Resilient WebGPU Execution
  */
 
-// Import WebLLM statically as an ES module so Safari never fails dynamic evaluation
 import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
 
 // ============================================================================
@@ -57,6 +56,9 @@ const state = {
   // Knowledge base
   knowledgeBase: []
 };
+
+// Helper: Yield back to Safari's main thread so UI never freezes
+const yieldToMainThread = () => new Promise(resolve => setTimeout(resolve, 16));
 
 // ============================================================================
 // 3. Persistent Storage Controller
@@ -186,7 +188,7 @@ async function callGeminiOnline(messages, systemInstruction, onChunk, signal) {
     contents: cleanHistory,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 8192 // Extended token limit for complete code generation
+      maxOutputTokens: 8192
     }
   };
 
@@ -284,11 +286,18 @@ async function loadOfflineModel(onProgress) {
 
   state.isModelLoading = true;
   updateOfflineBarUI();
+  await yieldToMainThread();
 
   try {
+    let lastRenderUpdate = 0;
     const engine = await webllm.CreateMLCEngine(targetModel, {
       initProgressCallback: (report) => {
-        if (onProgress) onProgress(report);
+        const now = performance.now();
+        // Throttle UI repaints to prevent locking iPad touch listeners
+        if (now - lastRenderUpdate > 80 || report.progress === 1) {
+          lastRenderUpdate = now;
+          if (onProgress) onProgress(report);
+        }
       }
     });
 
@@ -296,6 +305,9 @@ async function loadOfflineModel(onProgress) {
     state.loadedModelId = targetModel;
     state.isModelReady = true;
     state.isModelLoading = false;
+    
+    // Release thread so Safari re-attaches gestures and clicks immediately
+    await yieldToMainThread();
     updateOfflineBarUI();
     return engine;
   } catch (err) {
@@ -303,6 +315,7 @@ async function loadOfflineModel(onProgress) {
     state.loadedModelId = null;
     state.isModelLoading = false;
     state.isModelReady = false;
+    await yieldToMainThread();
     updateOfflineBarUI();
     throw err;
   }
@@ -320,6 +333,7 @@ async function unloadOfflineModel() {
     state.isModelReady = false;
     state.isModelLoading = false;
     state.lastTokensGenerated = 0;
+    await yieldToMainThread();
     updateOfflineBarUI();
   }
 }
@@ -329,7 +343,6 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     throw new Error('OFFLINE_NOT_LOADED');
   }
 
-  // Prevents "NDArray has already been disposed" by resetting temporary tensor memory
   try {
     await state.webllmEngine.resetChat(false);
   } catch (e) {
@@ -342,7 +355,6 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     formatted.push({ role: 'system', content: systemInstruction.trim() });
   }
 
-  // Pass current prompt and the preceding turn to keep context manageable in WebGPU
   const recentTurns = messages.slice(-2);
   for (const m of recentTurns) {
     formatted.push({
@@ -358,7 +370,7 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
     const asyncChunkGenerator = await state.webllmEngine.chat.completions.create({
       messages: formatted,
       temperature: 0.6,
-      max_tokens: 2048, // Increased token limit for complete code generation
+      max_tokens: 2048,
       stream: true
     });
 
@@ -371,6 +383,10 @@ async function callWebLLMOffline(messages, systemInstruction, onChunk, signal) {
         fullReply += delta;
         tokenCount++;
         onChunk(fullReply);
+        // Let Safari repaint and keep the stop button responsive
+        if (tokenCount % 4 === 0) {
+          await yieldToMainThread();
+        }
       }
     }
 
@@ -441,7 +457,6 @@ function renderChatList() {
 function formatMarkdown(text) {
   if (!text) return '<span class="typing-dot">Thinking...</span>';
 
-  // 1. Multi-line Code blocks ```language ... ```
   let formatted = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
     const displayLang = lang.trim() || 'code';
     const escapedCode = code
@@ -463,7 +478,6 @@ function formatMarkdown(text) {
     `;
   });
 
-  // 2. Math Formula Containers $$ ... $$
   formatted = formatted.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
     const escapedFormula = formula.trim()
       .replace(/&/g, '&amp;')
@@ -484,14 +498,10 @@ function formatMarkdown(text) {
     `;
   });
 
-  // 3. Inline Code `...`
   formatted = formatted.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
-
-  // 4. Bold & Italics
   formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
 
-  // 5. Paragraph separation
   const parts = formatted.split(/\n\n+/);
   return parts.map(p => {
     if (p.includes('<div class="code-block-container')) return p;
@@ -541,7 +551,7 @@ function renderMessages() {
           </div>
           <div class="prompt-card" onclick="window.sendPrompt('What is the formula of Pythagorean theorem and how does it calculate the hypotenuse?')">
             <span class="prompt-tag">📐 Maths</span>
-            <span class="prompt-desc">Pythagorean theorem formula and right triangle resolution</span>
+            <span class="prompt-desc">Pythagorean theorem formula and resolution</span>
           </div>
           <div class="prompt-card" onclick="window.sendPrompt('Why is the sky blue?')">
             <span class="prompt-tag">🌱 Science</span>
@@ -632,6 +642,8 @@ function updateOfflineBarUI() {
   const onlineSelect = document.getElementById('online-model-select');
   const offlineSelect = document.getElementById('offline-model-select');
   const modelTag = document.getElementById('current-model-tag');
+  const chatInput = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('btn-send');
 
   if (!bar) return;
 
@@ -663,6 +675,12 @@ function updateOfflineBarUI() {
       btnLoad.style.display = 'none';
       btnUnload.style.display = 'block';
       progressWrap.style.display = 'none';
+
+      // Always restore input responsiveness when model is ready
+      if (!state.isGenerating) {
+        if (chatInput) chatInput.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
+      }
     } else if (state.isModelLoading) {
       ramBadge.textContent = 'Compiling...';
       ramBadge.className = 'ram-badge';
@@ -763,14 +781,14 @@ async function handleSendMessage() {
     }
   } catch (err) {
     if (err.name === 'AbortError') {
-      // User tapped stop
+      // Stopped by user
     } else if (err.message === 'MISSING_API_KEY') {
       assistantMsg.content = '🔑 **Gemini API Key Required**\n\nPlease open **Settings** (⚙) and paste your free Gemini API key to use Online mode, or switch to **Offline Mode** in the top bar.';
       openModal(true);
     } else if (err.message === 'OFFLINE_NOT_LOADED') {
-      assistantMsg.content = '⚠️️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
+      assistantMsg.content = '⚠️ **Offline Model Not Ready**\n\nPlease tap **"⚡ Load Engine"** in the top bar to initialize WebGPU shaders.';
     } else {
-      assistantMsg.content = `⚠ **Error:** ${err.message || err}`;
+      assistantMsg.content = `⚠️ **Error:** ${err.message || err}`;
     }
     updateStreamingBubble(assistantMsg.content);
   } finally {
@@ -782,7 +800,9 @@ async function handleSendMessage() {
     inputEl.disabled = false;
     saveChats();
     renderMessages();
-    setTimeout(() => inputEl.focus(), 60);
+    setTimeout(() => {
+      inputEl.focus();
+    }, 60);
   }
 }
 
