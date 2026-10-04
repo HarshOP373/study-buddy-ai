@@ -192,18 +192,16 @@ function updateChatSummary(chat) {
 // ============================================================================
 
 async function getWebLLMModule() {
-  if (state.webllmModule) return state.webllmModule;
-  if (window.webllm) {
-    state.webllmModule = window.webllm;
-    return state.webllmModule;
+  // Use the global library loaded by index.html (has full GPU detection intact)
+  if (window.webllm && window.webllm.CreateMLCEngine) {
+    return window.webllm;
   }
+  // Fallback dynamic import if needed
   try {
-    const mod = await import(WEBLLM_BUNDLE_URL);
-    state.webllmModule = mod.default || mod;
-    return state.webllmModule;
+    const mod = await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm");
+    return mod.default || mod;
   } catch (err) {
-    console.error('[WebLLM Load Error]:', err);
-    throw new Error('Could not load WebLLM engine bundle. Please make sure you opened KinStudy on Wi-Fi once to complete initial caching!');
+    throw new Error('WebLLM engine library not available. Connect to Wi-Fi once to complete initial caching!');
   }
 }
 
