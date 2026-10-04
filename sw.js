@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kinstudy-offline-v25';
+const CACHE_NAME = 'kinstudy-offline-v27';
 
 const PRECACHE_ASSETS = [
   './',
@@ -7,7 +7,7 @@ const PRECACHE_ASSETS = [
   './app.js',
   './study-data.json',
   './manifest.json',
-  '[https://esm.sh/@mlc-ai/web-llm@0.2.78?bundle](https://esm.sh/@mlc-ai/web-llm@0.2.78?bundle)'
+  'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/lib/index.iife.min.js'
 ];
 
 self.addEventListener('install', (event) => {
