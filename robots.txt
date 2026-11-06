@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://harshop373.github.io/study-buddy-ai/sitemap.xml
